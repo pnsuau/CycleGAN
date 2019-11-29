@@ -9,6 +9,7 @@ import torch.utils.data as data
 from PIL import Image
 import os
 import os.path
+import glob
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
@@ -32,6 +33,31 @@ def make_dataset(dir, max_dataset_size=float("inf")):
                 images.append(path)
     return images[:min(max_dataset_size, len(images))]
 
+def make_labeled_dataset(dir, max_dataset_size=float("inf")):
+    images = []
+    labels = []
+    alllabels = {}
+    lbl = 0
+    assert os.path.isdir(dir), '%s is not a valid directory' % dir
+
+    #for root, _, fnames in sorted(os.walk(dir)):
+    #    for fname in fnames:
+    #        if is_image_file(fname):
+    #            path = os.path.join(root, fname)
+    #            images.append(path)
+    all_files = glob.glob(dir + '/*/*.*')
+    for img in all_files:
+        if is_image_file(img):
+            images.append(img)
+            label = os.path.basename(os.path.dirname(img))
+            if not label in alllabels:
+                alllabels[label] = lbl
+                lbl += 1
+            label = alllabels[label]
+            labels.append(label)
+    
+    #print('labels=',labels)        
+    return images[:min(max_dataset_size, len(images))],labels
 
 def default_loader(path):
     return Image.open(path).convert('RGB')

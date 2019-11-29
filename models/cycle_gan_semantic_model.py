@@ -78,12 +78,12 @@ class CycleGANSemanticModel(BaseModel):
                                             opt.n_layers_D, opt.norm, #use_sigmoid, 
                                             opt.init_type, opt.init_gain, self.gpu_ids)
             self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
-                                            opt.which_model_netD,
+                                            opt.netD,
                                             opt.n_layers_D, opt.norm, #use_sigmoid, 
                                             opt.init_type, opt.init_gain, self.gpu_ids)
             self.netCLS = networks.define_C(opt.output_nc, opt.ndf, 
                                             init_type=opt.init_type, init_gain=opt.init_gain,
-                                            gpu_ids=self.gpu_ids)
+                                            gpu_ids=self.gpu_ids, nclasses=opt.semantic_nclasses)
  
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
@@ -91,7 +91,7 @@ class CycleGANSemanticModel(BaseModel):
             self.fake_A_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             self.fake_B_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             # define loss functions
-            self.criterionGAN = networks.GANLoss(use_lsgan=not opt.no_lsgan).to(self.device)
+            self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
             self.criterionCLS = torch.nn.modules.CrossEntropyLoss()
@@ -107,12 +107,14 @@ class CycleGANSemanticModel(BaseModel):
             #beniz: not adding optimizers CLS (?)
 
     def set_input(self, input):
-        AtoB = self.opt.which_direction == 'AtoB'
+        AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
+        #print(input['B'])
         if 'A_label' in input:# and 'B_label' in input:
-            self.input_A_label = input['A_label' if AtoB else 'B_label'].to(self.device)
+            #self.input_A_label = input['A_label' if AtoB else 'B_label'].to(self.device)
+            self.input_A_label = input['A_label'].to(self.device)
             #self.input_B_label = input['B_label' if AtoB else 'A_label'].to(self.device) # beniz: unused
             #self.image_paths = input['B_paths'] # Hack!! forcing the labels to corresopnd to B domain
 
@@ -127,6 +129,8 @@ class CycleGANSemanticModel(BaseModel):
         if self.isTrain:
            # Forward all four images through classifier
            # Keep predictions from fake images only
+           #print('real_A shape=',self.real_A.shape)
+           #print('real_A=',self.real_A)
            self.pred_real_A = self.netCLS(self.real_A)
            _,self.gt_pred_A = self.pred_real_A.max(1)
            pred_real_B = self.netCLS(self.real_B)
@@ -194,6 +198,9 @@ class CycleGANSemanticModel(BaseModel):
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
 
         # semantic loss AB
+        #print('fake_B=',self.pred_fake_B)
+        #print('input_A_label=',self.input_A_label)
+        #print(self.pred_fake_B.shape,self.input_A_label.shape)
         self.loss_sem_AB = self.criterionCLS(self.pred_fake_B, self.input_A_label)
         #self.loss_sem_AB = self.criterionCLS(self.pred_fake_B, self.gt_pred_A)
         # semantic loss BA
