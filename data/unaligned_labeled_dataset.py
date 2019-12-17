@@ -1,4 +1,5 @@
 import os.path
+#import torchvision.transforms as transforms
 from data.base_dataset import BaseDataset, get_transform
 from data.image_folder import make_dataset, make_labeled_dataset
 from PIL import Image
@@ -43,7 +44,7 @@ class UnalignedLabeledDataset(BaseDataset):
         output_nc = self.opt.input_nc if btoA else self.opt.output_nc      # get the number of channels of output image
         self.transform_A = get_transform(self.opt, grayscale=(input_nc == 1))
         self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1))
-
+        
     def __getitem__(self, index):
         """Return a data point and its metadata information.
 

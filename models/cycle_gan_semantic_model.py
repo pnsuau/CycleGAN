@@ -32,7 +32,7 @@ class CycleGANSemanticModel(BaseModel):
         Identity loss (optional): lambda_identity * (||G_A(B) - B|| * lambda_B + ||G_B(A) - A|| * lambda_A) (Sec 5.2 "Photo generation from paintings" in the paper)
         Dropout is not used in the original CycleGAN paper.
         """
-        parser.set_defaults(no_dropout=True)  # default CycleGAN did not use dropout
+        parser.set_defaults(no_dropout=False)  # default CycleGAN did not use dropout, beniz: we do
         if is_train:
             parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
@@ -138,7 +138,7 @@ class CycleGANSemanticModel(BaseModel):
            self.pred_fake_A = self.netCLS(self.fake_A)
            self.pred_fake_B = self.netCLS(self.fake_B)
 
-           _,pfB = self.pred_fake_B.max(1)
+           _,self.pfB = self.pred_fake_B.max(1) #beniz: unused ?
         
 
     def backward_D_basic(self, netD, real, fake):
@@ -187,7 +187,7 @@ class CycleGANSemanticModel(BaseModel):
             self.loss_idt_B = 0
 
         # GAN loss D_A(G_A(A))
-        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # beniz: had a factor 2...
+        self.loss_G_A = 2 * self.criterionGAN(self.netD_A(self.fake_B), True) # beniz: had a factor 2...
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss
@@ -205,6 +205,8 @@ class CycleGANSemanticModel(BaseModel):
         #self.loss_sem_AB = self.criterionCLS(self.pred_fake_B, self.gt_pred_A)
         # semantic loss BA
         self.loss_sem_BA = self.criterionCLS(self.pred_fake_A, self.gt_pred_B)
+        #self.loss_sem_BA = 0
+        #self.loss_sem_BA = self.criterionCLS(self.pred_fake_A, self.pfB) # beniz
         
         # only use semantic loss when classifier has reasonably low loss
         #if True:
@@ -216,21 +218,20 @@ class CycleGANSemanticModel(BaseModel):
         self.loss_G.backward()
 
     def optimize_parameters(self):
+        """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward
-        self.forward()
+        self.forward()      # compute fake images and reconstruction images.
         # G_A and G_B
-        self.set_requires_grad([self.netD_A, self.netD_B], False)
-        self.set_requires_grad([self.netG_A, self.netG_B], True)
-        self.optimizer_G.zero_grad()
-        self.optimizer_CLS.zero_grad()
-        self.backward_G()
-        self.optimizer_G.step()
+        self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
+        self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
+        self.backward_G()             # calculate gradients for G_A and G_B
+        self.optimizer_G.step()       # update G_A and G_B's weights
         # D_A and D_B
         self.set_requires_grad([self.netD_A, self.netD_B], True)
-        self.optimizer_D.zero_grad()
-        self.backward_D_A()
-        self.backward_D_B()
-        self.optimizer_D.step()
+        self.optimizer_D.zero_grad()   # set D_A and D_B's gradients to zero
+        self.backward_D_A()      # calculate gradients for D_A
+        self.backward_D_B()      # calculate graidents for D_B
+        self.optimizer_D.step()  # update D_A and D_B's weights
         # CLS
         self.set_requires_grad([self.netD_A, self.netD_B], False)
         self.set_requires_grad([self.netCLS], True)

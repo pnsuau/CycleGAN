@@ -640,7 +640,7 @@ class Classifier(nn.Module):
             sequence += [
                 nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
                           kernel_size=kw, stride=2),
-                #norm_layer(ndf * nf_mult, affine=True), #beniz: pb with dimensions with batch_size = 1
+                norm_layer(ndf * nf_mult, affine=True), #beniz: pb with dimensions with batch_size = 1
                 nn.LeakyReLU(0.2, True)
             ]
         self.before_linear = nn.Sequential(*sequence)
