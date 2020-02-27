@@ -5,6 +5,32 @@ import numpy as np
 from PIL import Image
 import os
 
+def display_mask(mask):
+    dict_col =np.array(
+        [
+            [0,0,0],
+            [0,255,0],
+            [255,0,0],
+            [0,0,255],
+            [255,255,255],
+            [96,96,96],
+            [253,96,96],
+            [255,255,0],
+            [237,127,16],
+            [102,0,153],
+        ]
+    )
+    try :
+        len(mask.shape)==2
+    except AssertionError:
+        print('Mask\'s shape is not 2')
+    mask_dis = np.zeros((mask.shape[0],mask.shape[1],3))
+    #print('mask_dis shape',mask_dis.shape)
+    for i in range(mask.shape[0]):
+        for j in range(mask.shape[0]):
+            mask_dis[i,j,:] = dict_col[mask[i,j]]
+    return mask_dis
+
 
 def tensor2im(input_image, imtype=np.uint8):
     """"Converts a Tensor array into a numpy image array.
@@ -21,7 +47,11 @@ def tensor2im(input_image, imtype=np.uint8):
         image_numpy = image_tensor[0].cpu().float().numpy()  # convert it into a numpy array
         if image_numpy.shape[0] == 1:  # grayscale to RGB
             image_numpy = np.tile(image_numpy, (3, 1, 1))
-        image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-processing: tranpose and scaling
+        if len(image_numpy.shape)!=2: # it is an image
+            image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-processing: tranpose and scaling
+        else : # it is  a mask
+            image_numpy = image_numpy.astype(np.uint8)
+            image_numpy = display_mask(image_numpy)
     else:  # if it is a numpy array, do nothing
         image_numpy = input_image
     return image_numpy.astype(imtype)
