@@ -31,6 +31,8 @@ def make_dataset(dir, max_dataset_size=float("inf")):
             if is_image_file(fname):
                 path = os.path.join(root, fname)
                 images.append(path)
+    if max_dataset_size == 'inf':
+        max_dataset_size = len(images)
     return images[:min(max_dataset_size, len(images))]
 
 def make_labeled_dataset(dir, max_dataset_size=float("inf")):
@@ -59,9 +61,39 @@ def make_labeled_dataset(dir, max_dataset_size=float("inf")):
     #print('labels=',labels)        
     return images[:min(max_dataset_size, len(images))],labels
 
+def make_labeled_mask_dataset(dir,paths, max_dataset_size=float("inf")):
+    images = []
+    labels = []
+    assert os.path.isdir(dir), '%s is not a valid directory' % dir
+
+    with  open(dir+paths, 'r') as f:
+        paths_list = f.read().split('\n')
+    for line in paths_list:
+        line_split = line.split(' ')
+        
+        if len(line_split)==2:
+            images.append(line_split[0])
+            labels.append(line_split[1])
+    
+    return images,labels
+
+def make_dataset_path(dir,paths, max_dataset_size=float("inf")):
+    images = []
+    assert os.path.isdir(dir), '%s is not a valid directory' % dir
+
+    with  open(dir+paths, 'r') as f:
+        paths_list = f.read().split('\n')
+
+    for line in paths_list:        
+        images.append(line)
+
+    if max_dataset_size == 'inf':
+        max_dataset_size = len(images)
+    return images[:min(max_dataset_size, len(images))]
+
+
 def default_loader(path):
     return Image.open(path).convert('RGB')
-
 
 class ImageFolder(data.Dataset):
 
