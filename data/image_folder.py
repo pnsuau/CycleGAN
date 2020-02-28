@@ -84,8 +84,9 @@ def make_dataset_path(dir,paths, max_dataset_size=float("inf")):
     with  open(dir+paths, 'r') as f:
         paths_list = f.read().split('\n')
 
-    for line in paths_list:        
-        images.append(line)
+    for line in paths_list:
+        if is_image_file(line):
+            images.append(line)
 
     if max_dataset_size == 'inf':
         max_dataset_size = len(images)
