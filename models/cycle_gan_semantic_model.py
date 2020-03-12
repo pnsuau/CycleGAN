@@ -187,7 +187,7 @@ class CycleGANSemanticModel(BaseModel):
             self.loss_idt_B = 0
 
         # GAN loss D_A(G_A(A))
-        self.loss_G_A = 2 * self.criterionGAN(self.netD_A(self.fake_B), True) # beniz: had a factor 2...
+        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # removed the factor 2...
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss
@@ -223,6 +223,7 @@ class CycleGANSemanticModel(BaseModel):
         self.forward()      # compute fake images and reconstruction images.
         # G_A and G_B
         self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
+        self.set_requires_grad([self.netG_A, self.netG_B], True)
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
         self.backward_G()             # calculate gradients for G_A and G_B
         self.optimizer_G.step()       # update G_A and G_B's weights

@@ -85,10 +85,9 @@ class SegmentationModel(BaseModel):
         
     
     def backward_f_s(self):
-        #print('backward fs')
         label_A = self.input_A_label
         # forward only real source image through semantic classifier
-        pred_A = self.netf_s(self.real_A) 
+        pred_A = self.netf_s(self.real_A)
         self.loss_f_s = self.criterionf_s(pred_A, label_A)#.squeeze(1))
         self.loss_f_s.backward()
 

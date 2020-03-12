@@ -7,7 +7,7 @@ import numpy as np
 import torchvision.transforms as transforms
 import torch
 
-class UnalignedLabeledMaskDataset(BaseDataset):
+class UnalignedLabeledMask2Dataset(BaseDataset):
     """
     This dataset class can load unaligned/unpaired datasets with mask labels.
 
@@ -33,7 +33,7 @@ class UnalignedLabeledMaskDataset(BaseDataset):
         self.dir_B = os.path.join(opt.dataroot, opt.phase + 'B')  # create a path '/path/to/data/trainB'
 
         self.A_img_paths, self.A_label_paths = make_labeled_mask_dataset(self.dir_A,'/paths.txt', opt.max_dataset_size)   # load images from '/path/to/data/trainA/paths.txt' as well as labels
-        self.B_img_paths, self.B_label_paths = make_labeled_mask_dataset(self.dir_B,'/paths.txt', opt.max_dataset_size)    # load images from '/path/to/data/trainB'
+        self.B_img_paths = make_dataset_path(self.dir_B,'/paths.txt', opt.max_dataset_size)    # load images from '/path/to/data/trainB'
         self.A_size = len(self.A_img_paths)  # get the size of dataset A
         self.B_size = len(self.B_img_paths)  # get the size of dataset B
         btoA = self.opt.direction == 'BtoA'
@@ -67,7 +67,7 @@ class UnalignedLabeledMaskDataset(BaseDataset):
             index_B = random.randint(0, self.B_size - 1)
             
         B_img_path = self.B_img_paths[index_B]
-        B_label_path = self.B_label_paths[index_B]# % self.B_size]
+#        B_label_path = self.B_label_paths[index_B]# % self.B_size]
         A_img = Image.open(A_img_path).convert('RGB')
         B_img = Image.open(B_img_path).convert('RGB')
 
@@ -80,17 +80,17 @@ class UnalignedLabeledMaskDataset(BaseDataset):
         toten = transforms.Compose(transform_list)
 
         A_label = self.transform_label(Image.open(A_label_path))#pn:[index  % self.A_size] ?
-        B_label = self.transform_label(Image.open(B_label_path))#pn:[index  % self.A_size] ?
+#        B_label = self.transform_label(Image.open(B_label_path))#pn:[index  % self.A_size] ?
 
         im_np = np.array(A_label,dtype=np.int64)
         im_np = np.array([im_np],dtype=np.int64)
         A_label = torch.from_numpy(im_np)
 
-        im_np = np.array(B_label,dtype=np.int64)
-        im_np = np.array([im_np],dtype=np.int64)
-        B_label = torch.from_numpy(im_np)
+#        im_np = np.array(B_label,dtype=np.int64)
+#        im_np = np.array([im_np],dtype=np.int64)
+#        B_label = torch.from_numpy(im_np)
         
-        return {'A': A, 'B': B, 'A_paths': A_img_path, 'B_paths': B_img_path, 'A_label': A_label, 'B_label': B_label}
+        return {'A': A, 'B': B, 'A_paths': A_img_path, 'B_paths': B_img_path, 'A_label': A_label}#, 'B_label': B_label}
 
 
     def __len__(self):

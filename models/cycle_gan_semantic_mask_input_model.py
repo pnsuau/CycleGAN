@@ -7,11 +7,11 @@ from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
 
-class CycleGANSemanticMaskModel(BaseModel):
+class CycleGANSemanticMaskInputModel(BaseModel):
     #def name(self):
-    #    return 'CycleGANModel'
+    #    return 'CycleGANSemanticMaskInput'
 
-    # new, copied from cyclegansemantic model
+    # new, copied from cyclegansemanticmask model
     @staticmethod
     def modify_commandline_options(parser, is_train=True):
         """Add new dataset-specific options, and rewrite default values for existing options.
@@ -61,21 +61,21 @@ class CycleGANSemanticMaskModel(BaseModel):
         visual_names_seg = ['input_A_label','gt_pred_A','pfB_max','input_B_label','gt_pred_B','pfA_max']
         
         self.visual_names = visual_names_A + visual_names_B + visual_names_seg
-        
+
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G_A', 'G_B', 'D_A', 'D_B', 'f_s']
             #self.model_names = ['f_s']
         else:  # during test time, only load Gs
-            self.model_names = ['G_A', 'f_s']
+            self.model_names = ['G_A', 'G_B']
 
         # load/define networks
         # The naming conversion is different from those used in the paper
         # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
-        self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
+        self.netG_A = networks.define_G(opt.input_nc +1, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
-        self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
+        self.netG_B = networks.define_G(opt.output_nc +1, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
 
@@ -122,47 +122,76 @@ class CycleGANSemanticMaskModel(BaseModel):
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
-        if 'A_label' in input :
+        if 'A_label' in input:# and 'B_label' in input:
             #self.input_A_label = input['A_label' if AtoB else 'B_label'].to(self.device)
             self.input_A_label = input['A_label'].to(self.device).squeeze(1)
             #self.input_A_label_dis = display_mask(self.input_A_label)  
-        if 'B_label' in input:
-            self.input_B_label = input['B_label'].to(self.device).squeeze(1) # beniz: unused
+            
+            #self.input_B_label = input['B_label' if AtoB else 'A_label'].to(self.device) # beniz: unused
             #self.image_paths = input['B_paths'] # Hack!! forcing the labels to corresopnd to B domain
-
+        if 'B_label' in input:# and 'B_label' in input:
+            #self.input_A_label = input['A_label' if AtoB else 'B_label'].to(self.device)
+            self.input_B_label = input['B_label'].to(self.device).squeeze(1)
+        
 
     def forward(self):
-        self.fake_B = self.netG_A(self.real_A)
+        #print('FORWARDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD')
+        #print(self.netf_s)
         d = 1
-
-        if self.isTrain:
-            self.rec_A = self.netG_B(self.fake_B)
-            
-            self.fake_A = self.netG_B(self.real_B)
-            self.rec_B = self.netG_A(self.fake_A)
-           
-            self.pred_real_A = self.netf_s(self.real_A)
-           
-            
-            self.gt_pred_A = F.log_softmax(self.pred_real_A,dim= d).argmax(dim=d)
-            #print(self.gt_pred_A.shape)
-            #self.gt_pred_A = self.pred_real_A.argmax(dim=d)
-            
-            pred_real_B = self.netf_s(self.real_B)
-            self.gt_pred_B = F.log_softmax(pred_real_B,dim=d).argmax(dim=d)
-            #self.gt_pred_B = pred_real_B.argmax(dim=d)
-            
-            self.pred_fake_A = self.netf_s(self.fake_A)
-            
-            self.pfA = F.log_softmax(self.pred_fake_A,dim=d)#.argmax(dim=d)
-            self.pfA_max = self.pfA.argmax(dim=d)
-
+        
+        self.pred_real_A = self.netf_s(self.real_A)
+        self.gt_pred_A = F.log_softmax(self.pred_real_A,dim= d).argmax(dim=d)
+        self.fake_B = self.netG_A(torch.cat((self.real_A,self.gt_pred_A.float().unsqueeze(1)),dim=1))
         self.pred_fake_B = self.netf_s(self.fake_B)
         self.pfB = F.log_softmax(self.pred_fake_B,dim=d)#.argmax(dim=d)
         self.pfB_max = self.pfB.argmax(dim=d)
 
+#        print(self.real_A.shape)
+#        print(self.pred_real_A[0,0,0,0])
+#        print(self.pred_real_A.type())
+#        print(self.gt_pred_A.unsqueeze(1).shape)
+#        print(self.gt_pred_A.float().type())
+
+
+
+#        print(torch.cat((self.real_A,self.gt_pred_A.float().unsqueeze(1)),dim=1))
+#        print(torch.cat((self.real_A,self.gt_pred_A.float().unsqueeze(1)),dim=1).shape)
+#        print(torch.cat((self.real_A,self.gt_pred_A.float().unsqueeze(1)),dim=1)[0])
+      
+
+        if self.isTrain:
+            self.rec_A = self.netG_B(torch.cat((self.fake_B,self.pfB.argmax(dim=d).float().unsqueeze(1)),dim=1))
+            
+            pred_real_B = self.netf_s(self.real_B)
+            self.gt_pred_B = F.log_softmax(pred_real_B,dim=d).argmax(dim=d)
+            self.fake_A = self.netG_B(torch.cat((self.real_B,self.gt_pred_B.float().unsqueeze(1)),dim=1))
+            
+            self.pred_fake_A = self.netf_s(self.fake_A)
+            self.pfA = F.log_softmax(self.pred_fake_A,dim=d)#.argmax(dim=d)
+            self.pfA_max = self.pfA.argmax(dim=d)
+            self.rec_B = self.netG_A(torch.cat((self.fake_A,self.pfA.argmax(dim=d).float().unsqueeze(1)),dim=1))
+
+
+
+
+            # Forward all four images through classifier
+           # Keep predictions from fake images only           
+           
+            
+           #print(self.pred_real_A.shape)
+           
+           #print(self.gt_pred_A.shape)
+           #self.gt_pred_A = self.pred_real_A.argmax(dim=d)
+           
+           #self.gt_pred_B = pred_real_B.argmax(dim=d)
 
            
+           
+
+           
+           #self.pfB = self.pred_fake_B.argmax(dim=d)
+           #self.pfA = self.pred_fake_A.argmax(dim=d)        
+
     def backward_D_basic(self, netD, real, fake):
         # Real
         pred_real = netD(real)
@@ -200,18 +229,18 @@ class CycleGANSemanticMaskModel(BaseModel):
         # Identity loss
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed.
-            self.idt_A = self.netG_A(self.real_B)
-
+            self.idt_A = self.netG_A(torch.cat((self.real_B,self.gt_pred_B.float().unsqueeze(1)),dim=1))
+            
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed.
-            self.idt_B = self.netG_B(self.real_A)
+            self.idt_B = self.netG_B(torch.cat((self.real_A,self.gt_pred_A.float().unsqueeze(1)),dim=1))
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0
 
         # GAN loss D_A(G_A(A))
-        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # removed a factor 2...
+        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # removed the factor 2...
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss
