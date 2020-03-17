@@ -58,7 +58,7 @@ class CycleGANSemanticMaskModel(BaseModel):
            visual_names_A.append('idt_B')
            visual_names_B.append('idt_A') # beniz: inverted for original
 
-        visual_names_seg = ['input_A_label','gt_pred_A','pfB_max','input_B_label','gt_pred_B','pfA_max']
+        visual_names_seg = ['input_A_label','gt_pred_A','pfB_max','gt_pred_B','pfA_max']
         
         self.visual_names = visual_names_A + visual_names_B + visual_names_seg
         

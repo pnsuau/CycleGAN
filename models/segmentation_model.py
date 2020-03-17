@@ -65,7 +65,7 @@ class SegmentationModel(BaseModel):
         if self.isTrain:
             self.fake_A_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             # define loss functions
-            self.criterionf_s = torch.nn.modules.NLLLoss(reduction='mean',reduce = True,size_average=True)
+            self.criterionf_s = torch.nn.modules.NLLLoss()
             self.criterionf_s = torch.nn.modules.CrossEntropyLoss()
             # initialize optimizers
             self.optimizer_f_s = torch.optim.Adam(self.netf_s.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
