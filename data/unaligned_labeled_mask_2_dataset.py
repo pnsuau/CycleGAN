@@ -1,6 +1,6 @@
 import os.path
 from data.base_dataset import BaseDataset, get_transform
-from data.image_folder import make_dataset, make_labeled_mask_dataset, make_dataset_path
+from data.image_folder import  make_labeled_mask_dataset, make_dataset_path
 from PIL import Image
 import random
 import numpy as np

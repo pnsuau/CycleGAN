@@ -37,18 +37,24 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
             parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
-
+            parser.add_argument('--out_mask', action='store_true', help='use loss out mask')
+            parser.add_argument('--lambda_out_mask', type=float, default=10.0, help='weight for loss out mask')
+            parser.add_argument('--loss_out_mask', type=str, default='L1', help='loss mask')
         return parser
     
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
 
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
-        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 
+        losses = ['D_A', 'G_A', 'cycle_A', 'idt_A', 
                 'D_B', 'G_B', 'cycle_B', 'idt_B', 
                 'sem_AB', 'sem_BA', 'f_s']
 
+        if opt.out_mask:
+            losses += ['mask_AB','mask_BA']
 
+        self.loss_names = losses
+        
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
 
@@ -59,8 +65,13 @@ class CycleGANSemanticMaskModel(BaseModel):
            visual_names_B.append('idt_A') # beniz: inverted for original
 
         visual_names_seg = ['input_A_label','gt_pred_A','pfB_max','gt_pred_B','pfA_max']
-        
+
+        visual_names_out_mask = ['real_A_out_mask','fake_B_out_mask','real_B_out_mask','fake_A_out_mask']
+       
         self.visual_names = visual_names_A + visual_names_B + visual_names_seg
+
+        if opt.out_mask :
+            self.visual_names += visual_names_out_mask
         
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
@@ -102,8 +113,12 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
-            #self.criterionf_s = torch.nn.modules.NLLLoss(reduction='mean',reduce = True,size_average=True)
             self.criterionf_s = torch.nn.modules.CrossEntropyLoss()
+            if opt.out_mask:
+                if opt.loss_out_mask == 'L1':
+                    self.criterionMask = torch.nn.L1Loss()
+                elif opt.loss_out_mask == 'MSE':
+                    self.criterionMask = torch.nn.MSELoss()
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -156,6 +171,26 @@ class CycleGANSemanticMaskModel(BaseModel):
             
             self.pfA = F.log_softmax(self.pred_fake_A,dim=d)#.argmax(dim=d)
             self.pfA_max = self.pfA.argmax(dim=d)
+
+            if hasattr(self,'criterionMask'):
+                label_A = self.input_A_label
+                label_A_inv = torch.tensor(np.ones(label_A.size())).to(self.device) - label_A
+                label_A_inv = label_A_inv.unsqueeze(1)
+                label_A_inv = torch.cat ([label_A_inv,label_A_inv,label_A_inv],1)
+            
+                self.real_A_out_mask = self.real_A *label_A_inv
+                self.fake_B_out_mask = self.fake_B *label_A_inv
+
+                if hasattr(self, 'input_B_label'):
+                
+                    label_B = self.input_B_label
+                    label_B_inv = torch.tensor(np.ones(label_B.size())).to(self.device) - label_B
+                    label_B_inv = label_B_inv.unsqueeze(1)
+                    label_B_inv = torch.cat ([label_B_inv,label_B_inv,label_B_inv],1)
+                    
+                    self.real_B_out_mask = self.real_B *label_B_inv
+                    self.fake_A_out_mask = self.fake_A *label_B_inv
+
 
         self.pred_fake_B = self.netf_s(self.fake_B)
         self.pfB = F.log_softmax(self.pred_fake_B,dim=d)#.argmax(dim=d)
@@ -234,9 +269,15 @@ class CycleGANSemanticMaskModel(BaseModel):
         if not hasattr(self, 'loss_f_s') or self.loss_f_s.detach().item() > 1.0:
             self.loss_sem_AB = 0 * self.loss_sem_AB 
             self.loss_sem_BA = 0 * self.loss_sem_BA 
-        #    self.loss_sem_BA = 0 * self.loss_sem_BA
-        
         self.loss_G += self.loss_sem_BA + self.loss_sem_AB
+
+        lambda_out_mask = self.opt.lambda_out_mask
+
+        if hasattr(self,'criterionMask'):
+            self.loss_mask_AB = self.criterionMask( self.real_A_out_mask, self.fake_B_out_mask) * lambda_out_mask
+            self.loss_mask_BA = self.criterionMask( self.real_B_out_mask, self.fake_A_out_mask) * lambda_out_mask
+            self.loss_G += self.loss_mask_AB + self.loss_mask_BA
+
         self.loss_G.backward()
 
     def optimize_parameters(self):
