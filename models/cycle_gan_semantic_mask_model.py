@@ -1,6 +1,7 @@
 import torch
 import itertools
 from util.image_pool import ImagePool
+from util.losses import L1_Charbonnier_loss
 from .base_model import BaseModel
 from . import networks
 from torch.autograd import Variable
@@ -40,6 +41,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--out_mask', action='store_true', help='use loss out mask')
             parser.add_argument('--lambda_out_mask', type=float, default=10.0, help='weight for loss out mask')
             parser.add_argument('--loss_out_mask', type=str, default='L1', help='loss mask')
+            parser.add_argument('--charbonnier-eps', type=float, default=1e-6, help='Charbonnier loss epsilon value')
         return parser
     
     def __init__(self, opt):
@@ -119,6 +121,9 @@ class CycleGANSemanticMaskModel(BaseModel):
                     self.criterionMask = torch.nn.L1Loss()
                 elif opt.loss_out_mask == 'MSE':
                     self.criterionMask = torch.nn.MSELoss()
+                elif opt.loss_out_mask == 'Charbonnier':
+                    self.criterionMask = L1_Charbonnier_loss(opt.charbonnier_eps)
+                    
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
