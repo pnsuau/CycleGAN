@@ -43,6 +43,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--loss_out_mask', type=str, default='L1', help='loss mask')
             parser.add_argument('--charbonnier_eps', type=float, default=1e-6, help='Charbonnier loss epsilon value')
             parser.add_argument('--disc_in_mask', action='store_true', help='use in-mask discriminator')
+            parser.add_argument('--train_f_s_B', action='store_true', help='if true f_s will be trained not only on domain A but also on domain B')
         return parser
     
     def __init__(self, opt):
@@ -69,13 +70,19 @@ class CycleGANSemanticMaskModel(BaseModel):
            visual_names_A.append('idt_B')
            visual_names_B.append('idt_A') # beniz: inverted for original
 
-        visual_names_seg = ['input_A_label','gt_pred_A','pfB_max','gt_pred_B','pfA_max']
+        visual_names_seg_A = ['input_A_label','gt_pred_A','pfB_max']
+
+        
+        visual_names_seg_B = ['input_B_label','gt_pred_B','pfA_max']
+        
+        
+            
 
         visual_names_out_mask = ['real_A_out_mask','fake_B_out_mask','real_B_out_mask','fake_A_out_mask']
 
         visual_names_mask = ['fake_B_mask','fake_A_mask']
        
-        self.visual_names = visual_names_A + visual_names_B + visual_names_seg
+        self.visual_names = visual_names_A + visual_names_B + visual_names_seg_A + visual_names_seg_B
 
         if opt.out_mask :
             self.visual_names += visual_names_out_mask
@@ -254,6 +261,10 @@ class CycleGANSemanticMaskModel(BaseModel):
         # forward only real source image through semantic classifier
         pred_A = self.netf_s(self.real_A) 
         self.loss_f_s = self.criterionf_s(pred_A, label_A)#.squeeze(1))
+        if self.opt.train_f_s_B:
+            label_B = self.input_B_label
+            pred_B = self.netf_s(self.real_B) 
+            self.loss_f_s += self.criterionf_s(pred_B, label_B)#.squeeze(1))
         self.loss_f_s.backward()
 
     def backward_D_A(self):
@@ -309,7 +320,10 @@ class CycleGANSemanticMaskModel(BaseModel):
         #self.loss_sem_AB = self.criterionf_s(self.pred_fake_B, self.gt_pred_A)
 
         # semantic loss BA
-        self.loss_sem_BA = self.criterionf_s(self.pfA, self.gt_pred_B)#.squeeze(1))
+        if hasattr(self, 'input_B_label'):
+            self.loss_sem_BA = self.criterionf_s(self.pfA, self.input_B_label)#.squeeze(1))
+        else:
+            self.loss_sem_BA = self.criterionf_s(self.pfA, self.gt_pred_B)#.squeeze(1))
         #self.loss_sem_BA = self.criterionf_s(self.pred_fake_A, self.pfB) # beniz    
         
         # only use semantic loss when classifier has reasonably low loss

@@ -6,6 +6,7 @@ import random
 import numpy as np
 import torchvision.transforms as transforms
 import torch
+import torchvision.transforms.functional as TF
 
 class UnalignedLabeledMaskDataset(BaseDataset):
     """
@@ -41,15 +42,18 @@ class UnalignedLabeledMaskDataset(BaseDataset):
         else:
             self.A_img_paths, self.A_label_paths = make_labeled_mask_dataset(opt.dataroot,'/paths.txt', opt.max_dataset_size)   # load images from '/path/to/data/trainA/paths.txt' as well as labels
         self.A_size = len(self.A_img_paths)  # get the size of dataset A
-        self.transform_A = get_transform(self.opt, grayscale=(input_nc == 1))
+        self.transform_A = get_transform(self.opt, grayscale=(input_nc == 1),convert=False,crop=False)
 
         if os.path.exists(self.dir_B):
             self.B_img_paths, self.B_label_paths = make_labeled_mask_dataset(self.dir_B,'/paths.txt', opt.max_dataset_size)    # load images from '/path/to/data/trainB'
             self.B_size = len(self.B_img_paths)  # get the size of dataset B
             self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1))
+            self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1),convert=False,crop=False)
                 
-        self.transform_label = get_transform(self.opt,convert=False,method=Image.NEAREST)
-        
+        self.transform_label = get_transform(self.opt,convert=False,method=Image.NEAREST,crop=False)
+        transform_list = [transforms.ToTensor()]
+        transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        self.totens=transforms.Compose(transform_list)
                 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -67,9 +71,17 @@ class UnalignedLabeledMaskDataset(BaseDataset):
     
         A_img_path = self.A_img_paths[index % self.A_size]  # make sure index is within then range
         A_label_path = self.A_label_paths[index % self.A_size]
+
         A_img = Image.open(A_img_path).convert('RGB')
         A = self.transform_A(A_img)
         A_label = self.transform_label(Image.open(A_label_path))#pn:[index  % self.A_size] ?
+
+        if 'crop' in self.opt.preprocess:
+            i, j, h, w = transforms.RandomCrop.get_params(A, output_size=(self.opt.crop_size,self.opt.crop_size))
+            A = TF.crop(A, i, j, h, w)
+            A_label = TF.crop(A_label, i, j, h, w)
+       
+        A = self.totens(A)            
         im_np = np.array(A_label,dtype=np.int64)
         im_np = np.array([im_np],dtype=np.int64)
         A_label = torch.from_numpy(im_np)
@@ -82,10 +94,16 @@ class UnalignedLabeledMaskDataset(BaseDataset):
             
             B_img_path = self.B_img_paths[index_B]
             B_label_path = self.B_label_paths[index_B]# % self.B_size]
+
             B_img = Image.open(B_img_path).convert('RGB')
             B = self.transform_B(B_img)
             B_label = self.transform_label(Image.open(B_label_path))#pn:[index  % self.A_size] ?
+            
+            if 'crop' in self.opt.preprocess:
+                B = TF.crop(B, i, j, h, w)
+                B_label = TF.crop(B_label, i, j, h, w)
 
+            B = self.totens(B)            
             im_np = np.array(B_label,dtype=np.int64)
             im_np = np.array([im_np],dtype=np.int64)
             B_label = torch.from_numpy(im_np)
