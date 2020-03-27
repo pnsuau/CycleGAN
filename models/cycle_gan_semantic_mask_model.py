@@ -50,15 +50,19 @@ class CycleGANSemanticMaskModel(BaseModel):
         BaseModel.__init__(self, opt)
 
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
-        losses = ['D_A', 'G_A', 'cycle_A', 'idt_A', 
-                'D_B', 'G_B', 'cycle_B', 'idt_B', 
-                  'sem_AB', 'sem_BA', 'f_s']
+        losses = ['G_A','G_B']
         if opt.disc_in_mask:
             losses += ['D_A_mask', 'D_B_mask']
+        else:
+            losses += ['D_A', 'D_B']
 
         if opt.out_mask:
             losses += ['out_mask_AB','out_mask_BA']
 
+        losses += ['cycle_A', 'idt_A', 
+                   'cycle_B', 'idt_B', 
+                   'sem_AB', 'sem_BA', 'f_s']
+                  
         self.loss_names = losses
         
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
@@ -81,17 +85,24 @@ class CycleGANSemanticMaskModel(BaseModel):
         visual_names_out_mask = ['real_A_out_mask','fake_B_out_mask','real_B_out_mask','fake_A_out_mask']
 
         visual_names_mask = ['fake_B_mask','fake_A_mask']
-       
-        self.visual_names = visual_names_A + visual_names_B + visual_names_seg_A + visual_names_seg_B
+
+        visual_names_mask_in = ['fake_B_mask', 'fake_A_mask']
+        
+        self.visual_names = visual_names_A + visual_names_B + visual_names_seg_A + visual_names_seg_B 
 
         if opt.out_mask :
             self.visual_names += visual_names_out_mask
+
+        if opt.disc_in_mask:
+            self.visual_names += visual_names_mask_in
         
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
-            self.model_names = ['G_A', 'G_B', 'D_A', 'D_B', 'f_s']
+            self.model_names = ['G_A', 'G_B', 'f_s']
             if opt.disc_in_mask:
                 self.model_names += ['D_A_mask', 'D_B_mask']
+            else:
+                self.model_names += ['D_A', 'D_B']
             #self.model_names = ['f_s']
         else:  # during test time, only load Gs
             self.model_names = ['G_A', 'f_s']
@@ -108,15 +119,17 @@ class CycleGANSemanticMaskModel(BaseModel):
 
         if self.isTrain:
             #use_sigmoid = opt.no_lsgan
-            self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
-                                            opt.netD,
-                                            opt.n_layers_D, opt.norm, #use_sigmoid, 
-                                            opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
-                                            opt.netD,
-                                            opt.n_layers_D, opt.norm, #use_sigmoid, 
-                                            opt.init_type, opt.init_gain, self.gpu_ids)
-            if opt.disc_in_mask:
+            if not opt.disc_in_mask:
+                self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
+                                                opt.netD,
+                                                opt.n_layers_D, opt.norm, #use_sigmoid, 
+                                                opt.init_type, opt.init_gain, self.gpu_ids)
+                self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
+                                                opt.netD,
+                                                opt.n_layers_D, opt.norm, #use_sigmoid, 
+                                                opt.init_type, opt.init_gain, self.gpu_ids)
+            #elif opt.disc_in_mask:
+            else:
                 self.netD_A_mask = networks.define_D(opt.output_nc, opt.ndf,
                                                      opt.netD,
                                                      opt.n_layers_D, opt.norm, #use_sigmoid, 
@@ -156,7 +169,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
             if opt.disc_in_mask:
-                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters(), self.netD_A_mask.parameters(), self.netD_B_mask.parameters()),
+                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A_mask.parameters(), self.netD_B_mask.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
             else:    
                 self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
@@ -219,9 +232,9 @@ class CycleGANSemanticMaskModel(BaseModel):
                 self.real_A_out_mask = self.real_A *label_A_inv
                 self.fake_B_out_mask = self.fake_B *label_A_inv
                 if self.disc_in_mask:
-                    self.real_A_mask = self.real_A * label_A_in
-                    self.fake_B_mask = self.fake_B * label_A_in
-            
+                    self.real_A_mask = self.real_A #* label_A_in + self.real_A_out_mask
+                    self.fake_B_mask = self.fake_B * label_A_in + self.real_A_out_mask.float()
+                    
                 if hasattr(self, 'input_B_label'):
                 
                     label_B = self.input_B_label
@@ -233,9 +246,9 @@ class CycleGANSemanticMaskModel(BaseModel):
                     self.real_B_out_mask = self.real_B *label_B_inv
                     self.fake_A_out_mask = self.fake_A *label_B_inv
                     if self.disc_in_mask:
-                        self.real_B_mask = self.real_B * label_B_in
-                        self.fake_A_mask = self.fake_A * label_B_in
-                    
+                        self.real_B_mask = self.real_B #* label_B_in + self.real_B_out_mask
+                        self.fake_A_mask = self.fake_A * label_B_in + self.real_B_out_mask.float()
+                        
         self.pred_fake_B = self.netf_s(self.fake_B)
         self.pfB = F.log_softmax(self.pred_fake_B,dim=d)#.argmax(dim=d)
         self.pfB_max = self.pfB.argmax(dim=d)
@@ -302,12 +315,17 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.loss_idt_B = 0
 
         # GAN loss D_A(G_A(A))
-        self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # removed a factor 2...
+        #self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # removed a factor 2...
         # GAN loss D_B(G_B(B))
-        self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
+        #self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         if self.disc_in_mask:
-            self.loss_G_A += self.criterionGAN(self.netD_A_mask(self.fake_B_mask), True)
-            self.loss_G_B += self.criterionGAN(self.netD_B_mask(self.fake_A_mask), True)
+            self.loss_G_A = self.criterionGAN(self.netD_A_mask(self.fake_B_mask), True)
+            self.loss_G_B = self.criterionGAN(self.netD_B_mask(self.fake_A_mask), True)
+        else:
+            # GAN loss D_A(G_A(A))
+            self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
+            # GAN loss D_B(G_B(B))
+            self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
         # Backward cycle loss
@@ -347,31 +365,35 @@ class CycleGANSemanticMaskModel(BaseModel):
         # forward
         self.forward()      # compute fake images and reconostruction images.
         # G_A and G_B
-        self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
         if self.disc_in_mask:
             self.set_requires_grad([self.netD_A_mask, self.netD_B_mask], False)
+        else:
+            self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
         self.set_requires_grad([self.netG_A, self.netG_B], True)
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
         self.backward_G()             # calculate gradients for G_A and G_B
         self.optimizer_G.step()       # update G_A and G_B's weights
         # D_A and D_B
-        self.set_requires_grad([self.netD_A, self.netD_B], True)
         if self.disc_in_mask:
             self.set_requires_grad([self.netD_A_mask, self.netD_B_mask], True)
+        else:
+            self.set_requires_grad([self.netD_A, self.netD_B], True)
         self.optimizer_D.zero_grad()   # set D_A and D_B's gradients to zero
-        self.backward_D_A()      # calculate gradients for D_A
-        self.backward_D_B()      # calculate graidents for D_B
 
         if self.disc_in_mask:
             self.backward_D_A_mask()
             self.backward_D_B_mask()
+        else:
+            self.backward_D_A()      # calculate gradients for D_A
+            self.backward_D_B()      # calculate gradients for D_B
             
         self.optimizer_D.step()  # update D_A and D_B's weights
-        # f_s
-        self.set_requires_grad([self.netD_A, self.netD_B], False)
         if self.disc_in_mask:
             self.set_requires_grad([self.netD_A_mask, self.netD_B_mask], False)
+        else:
+            self.set_requires_grad([self.netD_A, self.netD_B], False)            
         self.set_requires_grad([self.netf_s], True)
+        # f_s
         self.optimizer_f_s.zero_grad()
         self.backward_f_s()
         self.optimizer_f_s.step()
