@@ -118,25 +118,23 @@ class CycleGANSemanticMaskModel(BaseModel):
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
 
         if self.isTrain:
-            #use_sigmoid = opt.no_lsgan
             if not opt.disc_in_mask:
                 self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
                                                 opt.netD,
-                                                opt.n_layers_D, opt.norm, #use_sigmoid, 
+                                                opt.n_layers_D, opt.norm, opt.D_dropout, 
                                                 opt.init_type, opt.init_gain, self.gpu_ids)
                 self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
                                                 opt.netD,
-                                                opt.n_layers_D, opt.norm, #use_sigmoid, 
+                                                opt.n_layers_D, opt.norm, opt.D_dropout, 
                                                 opt.init_type, opt.init_gain, self.gpu_ids)
-            #elif opt.disc_in_mask:
             else:
                 self.netD_A_mask = networks.define_D(opt.output_nc, opt.ndf,
                                                      opt.netD,
-                                                     opt.n_layers_D, opt.norm, #use_sigmoid, 
+                                                     opt.n_layers_D, opt.norm, opt.D_dropout, 
                                                      opt.init_type, opt.init_gain, self.gpu_ids)
                 self.netD_B_mask = networks.define_D(opt.input_nc, opt.ndf,
                                                      opt.netD,
-                                                     opt.n_layers_D, opt.norm, #use_sigmoid, 
+                                                     opt.n_layers_D, opt.norm, opt.D_dropout, 
                                                      opt.init_type, opt.init_gain, self.gpu_ids)
             
         self.netf_s = networks.define_f(opt.input_nc, nclasses=opt.semantic_nclasses, 
