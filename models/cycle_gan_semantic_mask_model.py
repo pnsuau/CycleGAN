@@ -295,11 +295,11 @@ class CycleGANSemanticMaskModel(BaseModel):
         self.loss_D_B_mask = self.backward_D_basic(self.netD_B_mask, self.real_A_mask, fake_A_mask)
 
     def backward_D_A_mask_in(self):
-        fake_B_mask_in = self.fake_B_pool_mask.query(self.fake_B_mask_in)
+        fake_B_mask_in = self.fake_B_pool.query(self.fake_B_mask_in)
         self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B_mask_in, fake_B_mask_in)
 
     def backward_D_B_mask_in(self):
-        fake_A_mask_in = self.fake_A_pool_mask.query(self.fake_A_mask)
+        fake_A_mask_in = self.fake_A_pool.query(self.fake_A_mask)
         self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A_mask_in, fake_A_mask_in)
 
     def backward_G(self):
