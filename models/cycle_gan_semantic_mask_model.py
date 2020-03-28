@@ -44,6 +44,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--charbonnier_eps', type=float, default=1e-6, help='Charbonnier loss epsilon value')
             parser.add_argument('--disc_in_mask', action='store_true', help='use in-mask discriminator')
             parser.add_argument('--train_f_s_B', action='store_true', help='if true f_s will be trained not only on domain A but also on domain B')
+            parser.add_argument('--lr_f_s', type=float, default=0.0002, help='f_s learning rate')
         return parser
     
     def __init__(self, opt):
@@ -164,11 +165,11 @@ class CycleGANSemanticMaskModel(BaseModel):
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
             if opt.disc_in_mask:
                 self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(),self.netD_B.parameters(),self.netD_A_mask.parameters(), self.netD_B_mask.parameters()),
-                                                lr=opt.lr, betas=(opt.beta1, 0.999))
+                                                lr=opt.D_lr, betas=(opt.beta1, 0.999))
             else:    
                 self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
-                                                lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_f_s = torch.optim.Adam(self.netf_s.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+                                                lr=opt.D_lr, betas=(opt.beta1, 0.999))
+            self.optimizer_f_s = torch.optim.Adam(self.netf_s.parameters(), lr=opt.lr_f_s, betas=(opt.beta1, 0.999))
             print('f defined')
             self.optimizers = []
             self.optimizers.append(self.optimizer_G)
