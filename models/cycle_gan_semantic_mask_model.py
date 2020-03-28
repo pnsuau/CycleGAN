@@ -117,20 +117,20 @@ class CycleGANSemanticMaskModel(BaseModel):
         if self.isTrain:
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
                                             opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.D_dropout, 
+                                            opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
                                             opt.init_type, opt.init_gain, self.gpu_ids)
             self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
                                             opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.D_dropout, 
+                                            opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
                                             opt.init_type, opt.init_gain, self.gpu_ids)
             if opt.disc_in_mask:
                 self.netD_A_mask = networks.define_D(opt.output_nc, opt.ndf,
                                                      opt.netD,
-                                                     opt.n_layers_D, opt.norm, opt.D_dropout, 
+                                                     opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
                                                      opt.init_type, opt.init_gain, self.gpu_ids)
                 self.netD_B_mask = networks.define_D(opt.input_nc, opt.ndf,
                                                      opt.netD,
-                                                     opt.n_layers_D, opt.norm, opt.D_dropout, 
+                                                     opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
                                                      opt.init_type, opt.init_gain, self.gpu_ids)
             
         self.netf_s = networks.define_f(opt.input_nc, nclasses=opt.semantic_nclasses, 

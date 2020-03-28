@@ -164,7 +164,12 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def spectral_norm(module, mode=True):
+    if mode:
+        return nn.utils.spectral_norm(module)
+    return module
+
+def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
     """Create a discriminator
 
     Parameters:
@@ -173,7 +178,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', use_dropout=False,
         netD (str)         -- the architecture's name: basic | n_layers | pixel
         n_layers_D (int)   -- the number of conv layers in the discriminator; effective when netD=='n_layers'
         norm (str)         -- the type of normalization layers used in the network.
-        use_dropout (bool) -- if use dropout layers.
+        use_dropout (bool) -- whether to use dropout layers
+        use_spectral(bool) -- whether to use spectral norm
         init_type (str)    -- the name of the initialization method.
         init_gain (float)  -- scaling factor for normal, xavier and orthogonal.
         gpu_ids (int list) -- which GPUs the network runs on: e.g., 0,1,2
@@ -199,9 +205,9 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', use_dropout=False,
     norm_layer = get_norm_layer(norm_type=norm)
 
     if netD == 'basic':  # default PatchGAN classifier
-        net = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_dropout=use_dropout)
+        net = NLayerDiscriminator(input_nc, ndf, n_layers=3, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral)
     elif netD == 'n_layers':  # more options
-        net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_dropout=use_dropout)
+        net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral)
     elif netD == 'pixel':     # classify if each pixel is real or fake
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
     else:
@@ -209,10 +215,6 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', use_dropout=False,
     return init_net(net, init_type, init_gain, gpu_ids)
 
 def define_C(output_nc, ndf, init_type='normal', init_gain=0.02, gpu_ids=[], nclasses=10):
-    #if output_nc == 3:
-    #    netC = get_model('DTN', num_cls=10)
-    #else:
-    #    Exception('classifier only implemented for 32x32x3 images')
     print('nclasses=',nclasses)
     netC = Classifier(output_nc, ndf, nclasses)
     return init_net(netC, init_type, init_gain, gpu_ids)
@@ -561,7 +563,7 @@ class UnetSkipConnectionBlock(nn.Module):
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_dropout=False):
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_dropout=False, use_spectral=False):
         """Construct a PatchGAN discriminator
 
         Parameters:
@@ -569,7 +571,8 @@ class NLayerDiscriminator(nn.Module):
             ndf (int)       -- the number of filters in the last conv layer
             n_layers (int)  -- the number of conv layers in the discriminator
             norm_layer      -- normalization layer
-            use_dropout (bool) -- if use dropout layers.
+            use_dropout (bool) -- whether to use dropout layers
+            use_spectral (bool) -- whether to use spectral norm
         """
         super(NLayerDiscriminator, self).__init__()
         if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
@@ -579,7 +582,7 @@ class NLayerDiscriminator(nn.Module):
 
         kw = 4
         padw = 1
-        sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
+        sequence = [spectral_norm(nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw),use_spectral), nn.LeakyReLU(0.2, True)]
         if use_dropout:
             sequence += [nn.Dropout(0.5)]
         nf_mult = 1
@@ -588,7 +591,7 @@ class NLayerDiscriminator(nn.Module):
             nf_mult_prev = nf_mult
             nf_mult = min(2 ** n, 8)
             sequence += [
-                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
+                spectral_norm(nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),use_spectral),
                 norm_layer(ndf * nf_mult),
                 nn.LeakyReLU(0.2, True)
             ]
@@ -598,14 +601,14 @@ class NLayerDiscriminator(nn.Module):
         nf_mult_prev = nf_mult
         nf_mult = min(2 ** n_layers, 8)
         sequence += [
-            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+            spectral_norm(nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),use_spectral),
             norm_layer(ndf * nf_mult),
             nn.LeakyReLU(0.2, True)
         ]
         if use_dropout:
             sequence += [nn.Dropout(0.5)]
 
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
+        sequence += [spectral_norm(nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw),use_spectral)]  # output 1 channel prediction map
         self.model = nn.Sequential(*sequence)
 
     def forward(self, input):
