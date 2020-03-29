@@ -7,6 +7,7 @@ from . import networks
 from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
+import kornia.augmentation
 
 class CycleGANSemanticMaskModel(BaseModel):
     #def name(self):
@@ -45,6 +46,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--disc_in_mask', action='store_true', help='use in-mask discriminator')
             parser.add_argument('--train_f_s_B', action='store_true', help='if true f_s will be trained not only on domain A but also on domain B')
             parser.add_argument('--lr_f_s', type=float, default=0.0002, help='f_s learning rate')
+            parser.add_argument('--D_noise', action='store_true', help='whether to add instance noise to discriminator inputs')
         return parser
     
     def __init__(self, opt):
@@ -86,7 +88,8 @@ class CycleGANSemanticMaskModel(BaseModel):
 
         visual_names_mask = ['fake_B_mask','fake_A_mask']
 
-        visual_names_mask_in = ['fake_B_mask', 'fake_A_mask']
+        visual_names_mask_in = ['real_B_mask','fake_B_mask','real_A_mask','fake_A_mask',
+                                'real_B_mask_in','fake_B_mask_in','real_A_mask_in','fake_A_mask_in']
         
         self.visual_names = visual_names_A + visual_names_B + visual_names_seg_A + visual_names_seg_B 
 
@@ -176,6 +179,19 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.optimizers.append(self.optimizer_D)
             #beniz: not adding optimizers f_s (?)
 
+            self.D_noise = opt.D_noise
+            if opt.D_noise:
+                self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
+                                                   kornia.augmentation.RandomHorizontalFlip(p=0.5),
+   
+                                                   kornia.color.AdjustBrightness(np.random.uniform(0.0,0.1)),
+                                                   kornia.color.AdjustContrast(np.random.uniform(0.9,1.0)),
+                                                   #kornia.color.AdjustSaturation(np.random.uniform(0.9,1.1)),
+                                                   #kornia.color.AdjustHue(np.random.uniform(-0.5,0.5)),
+                                                   #kornia.color.AdjustGamma(np.random.uniform(0.9,1.1)),
+                                                   kornia.filters.GaussianBlur2d((5,5),(10.0,10.0)))
+
+            
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
@@ -223,15 +239,27 @@ class CycleGANSemanticMaskModel(BaseModel):
                 label_A_inv = torch.tensor(np.ones(label_A.size())).to(self.device) - label_A
                 label_A_inv = label_A_inv.unsqueeze(1)
                 label_A_inv = torch.cat ([label_A_inv,label_A_inv,label_A_inv],1)
-            
+
                 self.real_A_out_mask = self.real_A *label_A_inv
                 self.fake_B_out_mask = self.fake_B *label_A_inv
+
+                if self.D_noise:
+                    real_A_n = self.aug_seq(self.real_A)
+                    fake_B_n = self.aug_seq(self.fake_B)
+                    real_A_out_mask_n = real_A_n * label_A_inv
+                    
                 if self.disc_in_mask:
                     self.real_A_mask_in = self.real_A * label_A_in
                     self.fake_B_mask_in = self.fake_B * label_A_in
                     self.real_A_mask = self.real_A #* label_A_in + self.real_A_out_mask
                     self.fake_B_mask = self.fake_B * label_A_in + self.real_A_out_mask.float()
-                    
+
+                if self.D_noise:
+                    self.real_A_mask_in = self.aug_seq(self.real_A_mask_in)
+                    self.fake_B_mask_in = self.aug_seq(self.fake_B_mask_in)
+                    self.real_A_mask = self.aug_seq(self.real_A_mask)
+                    self.fake_B_mask = self.aug_seq(self.fake_B_mask)
+                        
                 if hasattr(self, 'input_B_label'):
                 
                     label_B = self.input_B_label
@@ -247,6 +275,12 @@ class CycleGANSemanticMaskModel(BaseModel):
                         self.fake_A_mask_in = self.fake_A * label_B_in
                         self.real_B_mask = self.real_B #* label_B_in + self.real_B_out_mask
                         self.fake_A_mask = self.fake_A * label_B_in + self.real_B_out_mask.float()
+
+                        if self.D_noise:
+                            self.real_B_mask_in = self.aug_seq(self.real_B_mask_in)
+                            self.fake_A_mask_in = self.aug_seq(self.fake_A_mask_in)
+                            self.real_B_mask = self.aug_seq(self.real_B_mask)
+                            self.fake_A_mask = self.aug_seq(self.fake_A_mask)
                         
         self.pred_fake_B = self.netf_s(self.fake_B)
         self.pfB = F.log_softmax(self.pred_fake_B,dim=d)#.argmax(dim=d)
