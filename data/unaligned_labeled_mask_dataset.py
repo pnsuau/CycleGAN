@@ -1,12 +1,12 @@
 import os.path
-from data.base_dataset import BaseDataset, get_transform
+from data.base_dataset import BaseDataset, get_transform, get_transform_seg
 from data.image_folder import make_dataset, make_labeled_mask_dataset, make_dataset_path
 from PIL import Image
 import random
 import numpy as np
 import torchvision.transforms as transforms
 import torch
-import torchvision.transforms.functional as TF
+import torchvision.transforms.functional as F
 
 class UnalignedLabeledMaskDataset(BaseDataset):
     """
@@ -42,18 +42,12 @@ class UnalignedLabeledMaskDataset(BaseDataset):
         else:
             self.A_img_paths, self.A_label_paths = make_labeled_mask_dataset(opt.dataroot,'/paths.txt', opt.max_dataset_size)   # load images from '/path/to/data/trainA/paths.txt' as well as labels
         self.A_size = len(self.A_img_paths)  # get the size of dataset A
-        self.transform_A = get_transform(self.opt, grayscale=(input_nc == 1),convert=False,crop=False)
 
         if os.path.exists(self.dir_B):
             self.B_img_paths, self.B_label_paths = make_labeled_mask_dataset(self.dir_B,'/paths.txt', opt.max_dataset_size)    # load images from '/path/to/data/trainB'
             self.B_size = len(self.B_img_paths)  # get the size of dataset B
-            self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1))
-            self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1),convert=False,crop=False)
-                
-        self.transform_label = get_transform(self.opt,convert=False,method=Image.NEAREST,crop=False)
-        transform_list = [transforms.ToTensor()]
-        transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-        self.totens=transforms.Compose(transform_list)
+
+        self.transform=get_transform_seg(self.opt)
                 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -73,20 +67,11 @@ class UnalignedLabeledMaskDataset(BaseDataset):
         A_label_path = self.A_label_paths[index % self.A_size]
 
         A_img = Image.open(A_img_path).convert('RGB')
-        A = self.transform_A(A_img)
-        A_label = self.transform_label(Image.open(A_label_path))#pn:[index  % self.A_size] ?
-
-        if 'crop' in self.opt.preprocess:
-            i, j, h, w = transforms.RandomCrop.get_params(A, output_size=(self.opt.crop_size,self.opt.crop_size))
-            A = TF.crop(A, i, j, h, w)
-            A_label = TF.crop(A_label, i, j, h, w)
+        A_label = Image.open(A_label_path)
        
-        A = self.totens(A)            
-        im_np = np.array(A_label,dtype=np.int64)
-        im_np = np.array([im_np],dtype=np.int64)
-        A_label = torch.from_numpy(im_np)
+        A,A_label = self.transform(A_img,A_label)
 
-        if hasattr(self,'B_img_paths'):
+        if hasattr(self,'B_img_paths') :
             if self.opt.serial_batches:   # make sure index is within then range
                 index_B = index % self.B_size
             else:   # randomize the index for domain B to avoid fixed pairs.
@@ -94,19 +79,10 @@ class UnalignedLabeledMaskDataset(BaseDataset):
             
             B_img_path = self.B_img_paths[index_B]
             B_label_path = self.B_label_paths[index_B]# % self.B_size]
-
+            B_label = Image.open(B_label_path)
             B_img = Image.open(B_img_path).convert('RGB')
-            B = self.transform_B(B_img)
-            B_label = self.transform_label(Image.open(B_label_path))#pn:[index  % self.A_size] ?
             
-            if 'crop' in self.opt.preprocess:
-                B = TF.crop(B, i, j, h, w)
-                B_label = TF.crop(B_label, i, j, h, w)
-
-            B = self.totens(B)            
-            im_np = np.array(B_label,dtype=np.int64)
-            im_np = np.array([im_np],dtype=np.int64)
-            B_label = torch.from_numpy(im_np)
+            B,B_label = self.transform(B_img,B_label)
         
             return {'A': A, 'B': B, 'A_paths': A_img_path, 'B_paths': B_img_path, 'A_label': A_label, 'B_label': B_label}
         else:
