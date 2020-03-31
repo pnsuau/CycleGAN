@@ -47,6 +47,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--train_f_s_B', action='store_true', help='if true f_s will be trained not only on domain A but also on domain B')
             parser.add_argument('--lr_f_s', type=float, default=0.0002, help='f_s learning rate')
             parser.add_argument('--D_noise', action='store_true', help='whether to add instance noise to discriminator inputs')
+            parser.add_argument('--D_label_smooth', action='store_true', help='whether to use one-sided label smoothing with discriminator')
         return parser
     
     def __init__(self, opt):
@@ -151,7 +152,11 @@ class CycleGANSemanticMaskModel(BaseModel):
                 self.fake_B_pool_mask = ImagePool(opt.pool_size)
                 
             # define loss functions
-            self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
+            if opt.D_label_smooth:
+                target_real_label = 0.9
+            else:
+                target_real_label = 1.0
+            self.criterionGAN = networks.GANLoss(opt.gan_mode,target_real_label=target_real_label).to(self.device)
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
             self.criterionf_s = torch.nn.modules.CrossEntropyLoss()
@@ -238,22 +243,17 @@ class CycleGANSemanticMaskModel(BaseModel):
                 label_A_in = label_A.unsqueeze(1)
                 label_A_inv = torch.tensor(np.ones(label_A.size())).to(self.device) - label_A
                 label_A_inv = label_A_inv.unsqueeze(1)
-                label_A_inv = torch.cat ([label_A_inv,label_A_inv,label_A_inv],1)
-
+                #label_A_inv = torch.cat ([label_A_inv,label_A_inv,label_A_inv],1)
+                
                 self.real_A_out_mask = self.real_A *label_A_inv
                 self.fake_B_out_mask = self.fake_B *label_A_inv
-
-                if self.D_noise:
-                    real_A_n = self.aug_seq(self.real_A)
-                    fake_B_n = self.aug_seq(self.fake_B)
-                    real_A_out_mask_n = real_A_n * label_A_inv
-                    
+                
                 if self.disc_in_mask:
                     self.real_A_mask_in = self.real_A * label_A_in
                     self.fake_B_mask_in = self.fake_B * label_A_in
                     self.real_A_mask = self.real_A #* label_A_in + self.real_A_out_mask
-                    self.fake_B_mask = self.fake_B * label_A_in + self.real_A_out_mask.float()
-
+                    self.fake_B_mask = self.fake_B_mask_in + self.real_A_out_mask.float()
+                    
                 if self.D_noise:
                     self.real_A_mask_in = self.aug_seq(self.real_A_mask_in)
                     self.fake_B_mask_in = self.aug_seq(self.fake_B_mask_in)
@@ -266,7 +266,7 @@ class CycleGANSemanticMaskModel(BaseModel):
                     label_B_in = label_B.unsqueeze(1)
                     label_B_inv = torch.tensor(np.ones(label_B.size())).to(self.device) - label_B
                     label_B_inv = label_B_inv.unsqueeze(1)
-                    label_B_inv = torch.cat ([label_B_inv,label_B_inv,label_B_inv],1)
+                    #label_B_inv = torch.cat ([label_B_inv,label_B_inv,label_B_inv],1)
                     
                     self.real_B_out_mask = self.real_B *label_B_inv
                     self.fake_A_out_mask = self.fake_A *label_B_inv
@@ -274,7 +274,7 @@ class CycleGANSemanticMaskModel(BaseModel):
                         self.real_B_mask_in = self.real_B * label_B_in
                         self.fake_A_mask_in = self.fake_A * label_B_in
                         self.real_B_mask = self.real_B #* label_B_in + self.real_B_out_mask
-                        self.fake_A_mask = self.fake_A * label_B_in + self.real_B_out_mask.float()
+                        self.fake_A_mask = self.fake_A_mask_in + self.real_B_out_mask.float()
 
                         if self.D_noise:
                             self.real_B_mask_in = self.aug_seq(self.real_B_mask_in)
