@@ -247,7 +247,7 @@ class CycleGANSemanticMaskModel(BaseModel):
                 
                 self.real_A_out_mask = self.real_A *label_A_inv
                 self.fake_B_out_mask = self.fake_B *label_A_inv
-                
+
                 if self.disc_in_mask:
                     self.real_A_mask_in = self.real_A * label_A_in
                     self.fake_B_mask_in = self.fake_B * label_A_in
