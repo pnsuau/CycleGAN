@@ -45,6 +45,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--charbonnier_eps', type=float, default=1e-6, help='Charbonnier loss epsilon value')
             parser.add_argument('--disc_in_mask', action='store_true', help='use in-mask discriminator')
             parser.add_argument('--train_f_s_B', action='store_true', help='if true f_s will be trained not only on domain A but also on domain B')
+            parser.add_argument('--fs_light',action='store_true', help='whether to use a light (unet) network for f_s')
             parser.add_argument('--lr_f_s', type=float, default=0.0002, help='f_s learning rate')
             parser.add_argument('--D_noise', action='store_true', help='whether to add instance noise to discriminator inputs')
             parser.add_argument('--D_label_smooth', action='store_true', help='whether to use one-sided label smoothing with discriminator')
@@ -140,7 +141,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             
         self.netf_s = networks.define_f(opt.input_nc, nclasses=opt.semantic_nclasses, 
                                         init_type=opt.init_type, init_gain=opt.init_gain,
-                                        gpu_ids=self.gpu_ids)
+                                        gpu_ids=self.gpu_ids, opt.fs_light)
  
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
@@ -221,7 +222,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             
             self.fake_A = self.netG_B(self.real_B)
             self.rec_B = self.netG_A(self.fake_A)
-           
+
             self.pred_real_A = self.netf_s(self.real_A)
            
             
@@ -408,7 +409,7 @@ class CycleGANSemanticMaskModel(BaseModel):
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward
-        self.forward()      # compute fake images and reconostruction images.
+        self.forward()      # compute fake images and reconstruction images.
         # G_A and G_B
         if self.disc_in_mask:
             self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_mask, self.netD_B_mask], False)

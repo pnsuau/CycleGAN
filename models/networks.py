@@ -9,6 +9,7 @@ from torchvision.models import vgg
 import numpy as np
 import torch.nn.functional as F
 from torch.autograd import Variable
+from .UNet import UNet
 
 ###############################################################################
 # Helper Functions
@@ -219,8 +220,11 @@ def define_C(output_nc, ndf, init_type='normal', init_gain=0.02, gpu_ids=[], ncl
     netC = Classifier(output_nc, ndf, nclasses)
     return init_net(netC, init_type, init_gain, gpu_ids)
 
-def define_f(input_nc, nclasses, init_type='normal', init_gain=0.02, gpu_ids=[]):
-    net = VGG16_FCN8s(nclasses,pretrained = False, weights_init =None,output_last_ft=False)
+def define_f(input_nc, nclasses, init_type='normal', init_gain=0.02, gpu_ids=[], fs_light=False):
+    if not fs_light:
+        net = VGG16_FCN8s(nclasses,pretrained = False, weights_init =None,output_last_ft=False)
+    else:
+        net = UNet(classes=nclasses)
     return init_net(net, init_type, init_gain, gpu_ids)
 
 def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[]):
