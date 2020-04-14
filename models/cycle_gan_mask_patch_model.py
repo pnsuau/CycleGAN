@@ -53,7 +53,7 @@ class CycleGANMaskPatchModel(BaseModel):
                 'D_B_full', 'G_B', 'cycle_B', 'idt_B', 
                 ]
 
-        if opt.disc_full_im:
+        if opt.use_disc_patch:
             losses+=['G_A_2','G_B_2','D_A_patch','D_B_patch']
 
         self.loss_names = losses
@@ -79,7 +79,7 @@ class CycleGANMaskPatchModel(BaseModel):
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             model_names = ['G_A', 'G_B', 'D_A_full', 'D_B_full']
-            if opt.disc_full_im:
+            if opt.use_disc_patch:
                 model_names += ['D_A_patch', 'D_B_patch']
             #self.model_names = ['f_s']
         else:  # during test time, only load Gs
@@ -306,11 +306,11 @@ class CycleGANMaskPatchModel(BaseModel):
 
         # GAN loss D_A(G_A(A))
         self.loss_G_A = self.criterionGAN(self.netD_A_full(self.full_fake_B), True)
-        if self.opt.disc_full_im:
+        if self.opt.use_disc_patch:
             self.loss_G_A_2 = self.criterionGAN(self.netD_A_patch(self.fake_B), True)
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B_full(self.full_fake_A), True)
-        if self.opt.disc_full_im:
+        if self.opt.use_disc_patch:
             self.loss_G_B_2 = self.criterionGAN(self.netD_B_patch(self.fake_A), True)
 
         # Forward cycle loss
@@ -320,7 +320,7 @@ class CycleGANMaskPatchModel(BaseModel):
         # combined loss standard cyclegan
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
 
-        if self.opt.disc_full_im:
+        if self.opt.use_disc_patch:
             self.loss_G += self.loss_G_A_2 + self.loss_G_B_2
         
         lambda_out_mask = self.opt.lambda_out_mask
@@ -333,7 +333,7 @@ class CycleGANMaskPatchModel(BaseModel):
         self.forward()      # compute fake images and reconostruction images.
         # G_A and G_B
         self.set_requires_grad([self.netD_A_full, self.netD_B_full], False)  # Ds require no gradients when optimizing Gs
-        if self.opt.disc_full_im:
+        if self.opt.use_disc_patch:
             self.set_requires_grad([self.netD_A_patch, self.netD_B_patch], False)
         self.set_requires_grad([self.netG_A, self.netG_B], True)
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
@@ -341,12 +341,12 @@ class CycleGANMaskPatchModel(BaseModel):
         self.optimizer_G.step()       # update G_A and G_B's weights
         # D_A and D_B
         self.set_requires_grad([self.netD_A_full, self.netD_B_full], True)
-        if self.opt.disc_full_im:
+        if self.opt.use_disc_patch:
             self.set_requires_grad([self.netD_A_patch, self.netD_B_patch], True)
         self.optimizer_D.zero_grad()   # set D_A and D_B's gradients to zero
         self.backward_D_A_full()      # calculate gradients for D_A
         self.backward_D_B_full()      # calculate graidents for D_B
-        if self.opt.disc_full_im:
+        if self.opt.use_disc_patch:
             self.backward_D_A_patch()      # calculate gradients for D_A
             self.backward_D_B_patch()      # calculate graidents for D_B
         self.optimizer_D.step()  # update D_A and D_B's weights
