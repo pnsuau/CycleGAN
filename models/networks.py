@@ -420,7 +420,7 @@ class ResnetGenerator_attn(nn.Module):
 
         self.resnet_blocks = []
         for i in range(n_blocks):
-            self.resnet_blocks.append(resnet_block(ngf * 4, 3, 1, 1))
+            self.resnet_blocks.append(resnet_block_attn(ngf * 4, 3, 1, 1))
             self.resnet_blocks[i].weight_init(0, 0.02)
 
         self.resnet_blocks = nn.Sequential(*self.resnet_blocks)
@@ -514,9 +514,38 @@ class ResnetGenerator_attn(nn.Module):
 
         o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
 
-        return o, output1, output2, output3, output4, output5, output6, output7, output8, output9, output10, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
+        return o#, output1, output2, output3, output4, output5, output6, output7, output8, output9, output10, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
     
+class resnet_block_attn(nn.Module):
+    def __init__(self, channel, kernel, stride, padding):
+        super(resnet_block_attn, self).__init__()
+        self.channel = channel
+        self.kernel = kernel
+        self.strdie = stride
+        self.padding = padding
+        self.conv1 = nn.Conv2d(channel, channel, kernel, stride, 0)
+        self.conv1_norm = nn.InstanceNorm2d(channel)
+        self.conv2 = nn.Conv2d(channel, channel, kernel, stride, 0)
+        self.conv2_norm = nn.InstanceNorm2d(channel)
 
+    # weight_init
+    def weight_init(self, mean, std):
+        for m in self._modules:
+            normal_init(self._modules[m], mean, std)
+
+    def forward(self, input):
+        x = F.pad(input, (self.padding, self.padding, self.padding, self.padding), 'reflect')
+        x = F.relu(self.conv1_norm(self.conv1(x)))
+        x = F.pad(x, (self.padding, self.padding, self.padding, self.padding), 'reflect')
+        x = self.conv2_norm(self.conv2(x))
+
+        return input + x
+
+def normal_init(m, mean, std):
+    if isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Conv2d):
+        m.weight.data.normal_(mean, std)
+        m.bias.data.zero_()
+    
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""
 
