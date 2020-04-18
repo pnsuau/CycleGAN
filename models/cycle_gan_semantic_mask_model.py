@@ -53,7 +53,7 @@ class CycleGANSemanticMaskModel(BaseModel):
     
     def __init__(self, opt):
         BaseModel.__init__(self, opt)
-
+        
         # specify the training losses you want to print out. The program will call base_model.get_current_losses
         losses = ['G_A','G_B']
         if opt.disc_in_mask:
@@ -100,7 +100,7 @@ class CycleGANSemanticMaskModel(BaseModel):
 
         if opt.disc_in_mask:
             self.visual_names += visual_names_mask_in
-        
+            
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G_A', 'G_B', 'f_s']
@@ -141,7 +141,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             
         self.netf_s = networks.define_f(opt.input_nc, nclasses=opt.semantic_nclasses, 
                                         init_type=opt.init_type, init_gain=opt.init_gain,
-                                        gpu_ids=self.gpu_ids, opt.fs_light)
+                                        gpu_ids=self.gpu_ids, fs_light=opt.fs_light)
  
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
