@@ -49,6 +49,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--lr_f_s', type=float, default=0.0002, help='f_s learning rate')
             parser.add_argument('--D_noise', action='store_true', help='whether to add instance noise to discriminator inputs')
             parser.add_argument('--D_label_smooth', action='store_true', help='whether to use one-sided label smoothing with discriminator')
+            parser.add_argument('--rec_noise', action='store_true', help='whether to add noise to reconstruction')
         return parser
     
     def __init__(self, opt):
@@ -115,10 +116,10 @@ class CycleGANSemanticMaskModel(BaseModel):
         # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids)
 
         if self.isTrain:
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
@@ -185,17 +186,19 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.optimizers.append(self.optimizer_D)
             #beniz: not adding optimizers f_s (?)
 
+            self.rec_noise = opt.rec_noise
+            self.stddev = 0.1
             self.D_noise = opt.D_noise
-            if opt.D_noise:
-                self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
-                                                   kornia.augmentation.RandomHorizontalFlip(p=0.5),
+            #if opt.D_noise:   
+                #self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
+                #                                   kornia.augmentation.RandomHorizontalFlip(p=0.5),
    
-                                                   kornia.color.AdjustBrightness(np.random.uniform(0.0,0.1)),
-                                                   kornia.color.AdjustContrast(np.random.uniform(0.9,1.0)),
+   #                                                kornia.color.AdjustBrightness(np.random.uniform(0.0,0.1)),
+    #                                               kornia.color.AdjustContrast(np.random.uniform(0.9,1.0)),
                                                    #kornia.color.AdjustSaturation(np.random.uniform(0.9,1.1)),
                                                    #kornia.color.AdjustHue(np.random.uniform(-0.5,0.5)),
                                                    #kornia.color.AdjustGamma(np.random.uniform(0.9,1.1)),
-                                                   kornia.filters.GaussianBlur2d((5,5),(10.0,10.0)))
+     #                                              kornia.filters.GaussianBlur2d((5,5),(10.0,10.0)))
 
             
     def set_input(self, input):
@@ -218,10 +221,18 @@ class CycleGANSemanticMaskModel(BaseModel):
         d = 1
 
         if self.isTrain:
-            self.rec_A = self.netG_B(self.fake_B)
+            if self.rec_noise:
+                self.fake_B_noisy1 = self.gaussian(self.fake_B)
+                self.rec_A= self.netG_B(self.fake_B_noisy1)
+            else:
+                self.rec_A = self.netG_B(self.fake_B)
             
             self.fake_A = self.netG_B(self.real_B)
-            self.rec_B = self.netG_A(self.fake_A)
+            if self.rec_noise:
+                self.fake_A_noisy1 = self.gaussian(self.fake_A)
+                self.rec_B = self.netG_A(self.fake_A_noisy1)
+            else:
+                self.rec_B = self.netG_A(self.fake_A)
 
             self.pred_real_A = self.netf_s(self.real_A)
            
@@ -256,10 +267,12 @@ class CycleGANSemanticMaskModel(BaseModel):
                     self.fake_B_mask = self.fake_B_mask_in + self.real_A_out_mask.float()
                     
                 if self.D_noise:
-                    self.real_A_mask_in = self.aug_seq(self.real_A_mask_in)
-                    self.fake_B_mask_in = self.aug_seq(self.fake_B_mask_in)
-                    self.real_A_mask = self.aug_seq(self.real_A_mask)
-                    self.fake_B_mask = self.aug_seq(self.fake_B_mask)
+                    self.fake_B_noisy = self.gaussian(self.fake_B)
+                    self.real_A_noisy = self.gaussian(self.real_A)
+                    #self.real_A_mask_in = self.aug_seq(self.real_A_mask_in)
+                    #self.fake_B_mask_in = self.aug_seq(self.fake_B_mask_in)
+                    #self.real_A_mask = self.aug_seq(self.real_A_mask)
+                    #self.fake_B_mask = self.aug_seq(self.fake_B_mask)
                         
                 if hasattr(self, 'input_B_label'):
                 
@@ -277,11 +290,13 @@ class CycleGANSemanticMaskModel(BaseModel):
                         self.real_B_mask = self.real_B #* label_B_in + self.real_B_out_mask
                         self.fake_A_mask = self.fake_A_mask_in + self.real_B_out_mask.float()
 
-                        if self.D_noise:
-                            self.real_B_mask_in = self.aug_seq(self.real_B_mask_in)
-                            self.fake_A_mask_in = self.aug_seq(self.fake_A_mask_in)
-                            self.real_B_mask = self.aug_seq(self.real_B_mask)
-                            self.fake_A_mask = self.aug_seq(self.fake_A_mask)
+                    if self.D_noise:
+                        self.fake_A_noisy = self.gaussian(self.fake_A)
+                        self.real_B_noisy = self.gaussian(self.real_B)
+                        #self.real_B_mask_in = self.aug_seq(self.real_B_mask_in)
+                        #self.fake_A_mask_in = self.aug_seq(self.fake_A_mask_in)
+                        #self.real_B_mask = self.aug_seq(self.real_B_mask)
+                        #self.fake_A_mask = self.aug_seq(self.fake_A_mask)
                         
         self.pred_fake_B = self.netf_s(self.fake_B)
         self.pfB = F.log_softmax(self.pred_fake_B,dim=d)#.argmax(dim=d)
@@ -315,12 +330,20 @@ class CycleGANSemanticMaskModel(BaseModel):
         self.loss_f_s.backward()
 
     def backward_D_A(self):
-        fake_B = self.fake_B_pool.query(self.fake_B)
-        self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
+        if self.D_noise:
+            fake_B = self.fake_B_pool.query(self.fake_B_noisy)
+            self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B_noisy, fake_B)
+        else:
+            fake_B = self.fake_B_pool.query(self.fake_B)
+            self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
 
     def backward_D_B(self):
-        fake_A = self.fake_A_pool.query(self.fake_A)
-        self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
+        if self.D_noise:
+            fake_A = self.fake_A_pool.query(self.fake_A_noisy)
+            self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A_noisy, fake_A)
+        else:
+            fake_A = self.fake_A_pool.query(self.fake_A)
+            self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
 
     def backward_D_A_mask(self):
         fake_B_mask = self.fake_B_pool_mask.query(self.fake_B_mask)
@@ -445,3 +468,8 @@ class CycleGANSemanticMaskModel(BaseModel):
         self.optimizer_f_s.zero_grad()
         self.backward_f_s()
         self.optimizer_f_s.step()
+
+    def gaussian(self, in_tensor):
+        noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, self.stddev).cuda() + in_tensor
+        # noisy_tensor = 2 * (noisy_image - noisy_image.min()) / (noisy_image.max() - noisy_image.min()) - 1
+        return noisy_image

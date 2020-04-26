@@ -39,6 +39,7 @@ class BaseOptions():
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
         parser.add_argument('--D_dropout', action='store_true', help='whether to use dropout in the discriminator')
         parser.add_argument('--D_spectral', action='store_true', help='whether to use spectral norm in the discriminator')
+        parser.add_argument('--G_spectral', action='store_true', help='whether to use spectral norm in the generator')
         # dataset parameters
         parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | aligned | single | colorization]')
         parser.add_argument('--direction', type=str, default='AtoB', help='AtoB or BtoA')
