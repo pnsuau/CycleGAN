@@ -7,9 +7,10 @@ from . import networks
 from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
+import os
 #import kornia.augmentation
 
-class CycleGANSemanticMaskModel(BaseModel):
+class CycleGANSemanticMaskSty2Model(BaseModel):
     #def name(self):
     #    return 'CycleGANModel'
 
@@ -116,11 +117,53 @@ class CycleGANSemanticMaskModel(BaseModel):
         # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False)
 
+        # Define stylegan2 decoder
+        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids)
+        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids)
+        
+        # Load pretrained weights stylegan2 decoder
+        load_filename = 'network-snapshot-000421_ring.pt'
+        #load_filename = '/data1/stylegan2/results/00009-album-covers-stylegan2-512x512-2gpu-config-f/pytorch/network-snapshot-001684.pt'
+        load_path = os.path.join(self.save_dir, load_filename)
+        
+        nameDGA = 'DecoderG_A'
+        net = getattr(self, 'net' + nameDGA)
+        if isinstance(net, torch.nn.DataParallel):
+            net = net.module
+        print('loading the model from %s' % load_path)
+        #print(self.device)
+        state_dict = torch.load(load_path, map_location=str(self.device))
+        if hasattr(state_dict, '_metadata'):
+            del state_dict._metadata
+        net.load_state_dict(state_dict['g_ema'])
+        #self.set_requires_grad(net, True)
+                                
+        load_filename = 'network-snapshot-000721.pt'
+        load_path = os.path.join(self.save_dir, load_filename)
+        
+        nameDGB = 'DecoderG_B'
+        net = getattr(self, 'net' + nameDGB)
+        
+        if isinstance(net, torch.nn.DataParallel):
+            net = net.module
+        state_dict = torch.load(load_path, map_location=str(self.device))
+        if hasattr(state_dict, '_metadata'):
+            del state_dict._metadata
+        net.load_state_dict(state_dict['g_ema'])
+        #print(net.convs[0].conv.weight[0,1,0])
+        #self.set_requires_grad(net, True)
+        
+        self.mean_latent_A = self.netDecoderG_A.module.mean_latent(4096)
+        self.mean_latent_B = self.netDecoderG_B.module.mean_latent(4096)
+        #self.mean_latent_A = self.mean_latent_B = None
+                                
+        self.model_names += [nameDGA,nameDGB]
+        
         if self.isTrain:
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
                                             opt.netD,
@@ -217,23 +260,32 @@ class CycleGANSemanticMaskModel(BaseModel):
 
 
     def forward(self):
-        self.fake_B = self.netG_A(self.real_A)
+        self.z_fake_B = self.netG_A(self.real_A)
         d = 1
 
+        truncation = 0.5
+        self.netDecoderG_A.eval()
+        self.fake_B = F.interpolate(self.netDecoderG_A(self.z_fake_B.unsqueeze(dim=0),truncation=truncation, truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
+        
         if self.isTrain:
+            self.netDecoderG_B.eval()
             if self.rec_noise:
                 self.fake_B_noisy1 = self.gaussian(self.fake_B)
-                self.rec_A= self.netG_B(self.fake_B_noisy1)
+                self.z_rec_A= self.netG_B(self.fake_B_noisy1)
             else:
-                self.rec_A = self.netG_B(self.fake_B)
+                self.z_rec_A = self.netG_B(self.fake_B)
+            self.rec_A = F.interpolate(self.netDecoderG_B(self.z_rec_A.unsqueeze(dim=0),truncation=truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
+                
+            self.z_fake_A = self.netG_B(self.real_B)
+            self.fake_A = F.interpolate(self.netDecoderG_B(self.z_fake_A.unsqueeze(dim=0),truncation=truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
             
-            self.fake_A = self.netG_B(self.real_B)
             if self.rec_noise:
                 self.fake_A_noisy1 = self.gaussian(self.fake_A)
-                self.rec_B = self.netG_A(self.fake_A_noisy1)
+                self.z_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
-                self.rec_B = self.netG_A(self.fake_A)
-
+                self.z_rec_B = self.netG_A(self.fake_A)
+                self.rec_B = F.interpolate(self.netDecoderG_A(self.z_rec_B.unsqueeze(dim=0),truncation=truncation,truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
+                
             self.pred_real_A = self.netf_s(self.real_A)
            
             
@@ -369,11 +421,13 @@ class CycleGANSemanticMaskModel(BaseModel):
         # Identity loss
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed.
-            self.idt_A = self.netG_A(self.real_B)
-
+            self.z_idt_A = self.netG_A(self.real_B)
+            self.idt_A = F.interpolate(self.netDecoderG_A(self.z_idt_A.unsqueeze(dim=0))[0],size=self.opt.crop_size)
+            
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed.
-            self.idt_B = self.netG_B(self.real_A)
+            self.z_idt_B = self.netG_B(self.real_A)
+            self.idt_B = F.interpolate(self.netDecoderG_B(self.z_idt_B.unsqueeze(dim=0))[0],size=self.opt.crop_size)
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
@@ -427,7 +481,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.loss_out_mask_BA = self.criterionMask( self.real_B_out_mask, self.fake_A_out_mask) * lambda_out_mask
             self.loss_G += self.loss_out_mask_AB + self.loss_out_mask_BA
 
-        self.loss_G.backward()
+        self.loss_G.backward(retain_graph=True)
 
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
@@ -439,6 +493,9 @@ class CycleGANSemanticMaskModel(BaseModel):
         else:
             self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
         self.set_requires_grad([self.netG_A, self.netG_B], True)
+        self.set_requires_grad([self.netDecoderG_A, self.netDecoderG_B], True)
+        self.netDecoderG_A.zero_grad()
+        self.netDecoderG_B.zero_grad()
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
         self.backward_G()             # calculate gradients for G_A and G_B
         self.optimizer_G.step()       # update G_A and G_B's weights

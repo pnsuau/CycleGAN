@@ -10,6 +10,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.autograd import Variable
 from .UNet import UNet
+from .decoder_stylegan2 import Generator as GeneratorStyleGAN2
 
 ###############################################################################
 # Helper Functions
@@ -122,7 +123,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True):
     """Create a generator
 
     Parameters:
@@ -154,9 +155,9 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
     norm_layer = get_norm_layer(norm_type=norm)
 
     if netG == 'resnet_9blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=9)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=9, decoder=decoder)
     elif netG == 'resnet_6blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=6)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=6, decoder=decoder)
     elif netG == 'unet_128':
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
@@ -234,7 +235,10 @@ def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights
     net = Discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='')
     return init_net(net, init_type, init_gain, gpu_ids)
 
-    
+def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False):
+    net = GeneratorStyleGAN2(512,512,8)
+    return init_net(net, init_type, init_gain, gpu_ids)    
+
 ##############################################################################
 # Classes
 ##############################################################################
@@ -350,7 +354,7 @@ class ResnetGenerator(nn.Module):
     We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
 
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', use_spectral=False):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', use_spectral=False, decoder=True):
         """Construct a Resnet-based generator
 
         Parameters:
@@ -386,23 +390,39 @@ class ResnetGenerator(nn.Module):
 
             model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
 
-        for i in range(n_downsampling):  # add upsampling layers
-            mult = 2 ** (n_downsampling - i)
-            model += [spectral_norm(nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
-                                                       kernel_size=3, stride=2,
-                                                       padding=1, output_padding=1,
-                                                       bias=use_bias),use_spectral),
-                      norm_layer(int(ngf * mult / 2)),
-                      nn.ReLU(True)]
-        model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
-        model += [nn.Tanh()]
-
+        if decoder:
+            for i in range(n_downsampling):  # add upsampling layers
+                mult = 2 ** (n_downsampling - i)
+                model += [spectral_norm(nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+                                                           kernel_size=3, stride=2,
+                                                           padding=1, output_padding=1,
+                                                           bias=use_bias),use_spectral),
+                          norm_layer(int(ngf * mult / 2)),
+                          nn.ReLU(True)]
+                model += [nn.ReflectionPad2d(3)]
+                model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+                model += [nn.Tanh()]
+        else:
+            n_feat = 256
+            to_z = [nn.Linear(n_feat,512)] # 512 = sty2 image output size
+            to_z += [nn.Tanh()]
+            self.to_z = nn.Sequential(*to_z)
+            self.mpool = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)
+            #self.zrelu = nn.ReLU()
+            self.conv = nn.Conv2d(ngf*mult,1, kernel_size=1)
+                
         self.model = nn.Sequential(*model)
 
     def forward(self, input):
         """Standard forward"""
-        return self.model(input)
+        output = self.model(input)
+        if hasattr(self,'to_z'):
+            output = self.mpool(output)
+            #output = self.zrelu(output)
+            output = self.conv(output).squeeze(dim=1)
+            output = torch.flatten(output,1)
+            output = 3.0*self.to_z(output) # factor 3 to reach a N(0,1) from a tanh
+        return output
 
 class ResnetGenerator_attn(nn.Module):
     # initializers
@@ -559,7 +579,7 @@ class ResnetBlock(nn.Module):
         Original Resnet paper: https://arxiv.org/pdf/1512.03385.pdf
         """
         super(ResnetBlock, self).__init__()
-        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias)
+        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias, use_spectral)
 
     def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias, use_spectral):
         """Construct a convolutional block.
