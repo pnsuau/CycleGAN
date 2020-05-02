@@ -9,6 +9,7 @@ import numpy as np
 import torch.nn.functional as F
 import os
 #import kornia.augmentation
+#import sys
 
 class CycleGANSemanticMaskSty2Model(BaseModel):
     #def name(self):
@@ -263,9 +264,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.z_fake_B = self.netG_A(self.real_A)
         d = 1
 
-        truncation = 0.5
+        truncation = 0.9
         self.netDecoderG_A.eval()
-        self.fake_B = F.interpolate(self.netDecoderG_A(self.z_fake_B.unsqueeze(dim=0),truncation=truncation, truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
+        self.fake_B = F.interpolate(self.netDecoderG_A(self.z_fake_B.unsqueeze(dim=0),input_is_latent=True,truncation=truncation, truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
         
         if self.isTrain:
             self.netDecoderG_B.eval()
@@ -274,17 +275,17 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.z_rec_A= self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A = self.netG_B(self.fake_B)
-            self.rec_A = F.interpolate(self.netDecoderG_B(self.z_rec_A.unsqueeze(dim=0),truncation=truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
+            self.rec_A = F.interpolate(self.netDecoderG_B(self.z_rec_A.unsqueeze(dim=0),input_is_latent=True,truncation=truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
                 
             self.z_fake_A = self.netG_B(self.real_B)
-            self.fake_A = F.interpolate(self.netDecoderG_B(self.z_fake_A.unsqueeze(dim=0),truncation=truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
+            self.fake_A = F.interpolate(self.netDecoderG_B(self.z_fake_A.unsqueeze(dim=0),input_is_latent=True,truncation=truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
             
             if self.rec_noise:
                 self.fake_A_noisy1 = self.gaussian(self.fake_A)
                 self.z_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B = self.netG_A(self.fake_A)
-                self.rec_B = F.interpolate(self.netDecoderG_A(self.z_rec_B.unsqueeze(dim=0),truncation=truncation,truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
+            self.rec_B = F.interpolate(self.netDecoderG_A(self.z_rec_B.unsqueeze(dim=0),input_is_latent=True,truncation=truncation,truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
                 
             self.pred_real_A = self.netf_s(self.real_A)
            
@@ -458,15 +459,13 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         # semantic loss AB
         self.loss_sem_AB = self.criterionf_s(self.pfB, self.input_A_label)
-        #self.loss_sem_AB = self.criterionf_s(self.pred_fake_B, self.gt_pred_A)
-
+        
         # semantic loss BA
         if hasattr(self, 'input_B_label'):
             self.loss_sem_BA = self.criterionf_s(self.pfA, self.input_B_label)#.squeeze(1))
         else:
             self.loss_sem_BA = self.criterionf_s(self.pfA, self.gt_pred_B)#.squeeze(1))
-        #self.loss_sem_BA = self.criterionf_s(self.pred_fake_A, self.pfB) # beniz    
-        
+                
         # only use semantic loss when classifier has reasonably low loss
         #if True:
         if not hasattr(self, 'loss_f_s') or self.loss_f_s.detach().item() > 1.0:
