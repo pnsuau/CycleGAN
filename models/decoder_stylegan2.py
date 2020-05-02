@@ -2,6 +2,7 @@ import math
 import random
 import functools
 import operator
+import sys
 
 import torch
 from torch import nn
@@ -9,7 +10,6 @@ from torch.nn import functional as F
 from torch.autograd import Function
 
 from .op import FusedLeakyReLU, fused_leaky_relu, upfirdn2d
-
 
 class PixelNorm(nn.Module):
     def __init__(self):
@@ -503,6 +503,10 @@ class Generator(nn.Module):
 
             styles = style_t
 
+        #print('len(styles)=',len(styles),' / n_latent=',self.n_latent)
+        #print(type(styles))
+        #sys.exit()
+        
         if len(styles) < 2:
             inject_index = self.n_latent
 
@@ -513,14 +517,26 @@ class Generator(nn.Module):
                 latent = styles[0]
 
         else:
-            if inject_index is None:
-                inject_index = random.randint(1, self.n_latent - 1)
+            if len(styles) != self.n_latent:
+                print('number of styles=',len(styles),' and W space indexes=',self.n_latent,' are different.')
+                sys.exit()
+            
+            #if inject_index is None:
+            #    inject_index = random.randint(1, self.n_latent - 1)
 
-            latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
-            latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
-
-            latent = torch.cat([latent, latent2], 1)
-
+            #latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
+            #latent2 = styles[1].unsqueeze(1).repeat(1, self.n_latent - inject_index, 1)
+            #print('latent2 size=',latent2.size())
+            
+            #latent = torch.cat([latent, latent2], 1)
+            latents = []
+            for n in range(0,self.n_latent):
+                #print('latent size=',styles[n].unsqueeze(1).size())
+                latents.append(styles[n].unsqueeze(1))
+            latent = torch.cat(latents, 1)
+            #print('final latent size=',latent.size())
+            #sys.exit()
+            
         out = self.input(latent)
         out = self.conv1(out, latent[:, 0], noise=noise[0])
 
