@@ -407,7 +407,7 @@ class ResnetGenerator(nn.Module):
             if wplus == 0:
                 n_feat = 1024 # 256
                 to_z = [nn.Linear(n_feat,512)] # 512 = sty2 image output size
-                to_z += [nn.Sigmoid()]
+                to_z += [nn.Tanh()]
                 self.to_z = nn.Sequential(*to_z)
                 #self.mpool = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)
                 #self.zrelu = nn.ReLU()
@@ -593,10 +593,10 @@ class WBlock(nn.Module):
     """Define a linear block for W"""
     def __init__(self, dim, n_feat, init_type='normal', init_gain=0.02, gpu_ids=[]):
         super(WBlock, self).__init__()
-        self.conv2d = nn.Conv2d(dim,1,kernel_size=1).to(torch.device('cuda:2'))
-        self.lin = nn.Linear(n_feat,512).to(torch.device('cuda:2')) ## pb with init_net
+        self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
+        self.lin = nn.Linear(n_feat,512)
         w_block = []
-        w_block += [self.conv2d,nn.Flatten(),self.lin,nn.Sigmoid()]
+        w_block += [self.conv2d,nn.Flatten(),self.lin,nn.Tanh()]
         self.w_block = init_net(nn.Sequential(*w_block), init_type, init_gain, gpu_ids)
         
     def forward(self, x):
