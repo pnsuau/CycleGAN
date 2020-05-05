@@ -54,6 +54,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--D_label_smooth', action='store_true', help='whether to use one-sided label smoothing with discriminator')
             parser.add_argument('--rec_noise', action='store_true', help='whether to add noise to reconstruction')
             parser.add_argument('--wplus', type=int, default=0, help='work in W+ space, specifies the Wplus number of style activations required')
+            parser.add_argument('--wskip', action='store_true', help='whether to use skip connections to latent wplus heads')
             parser.add_argument('--truncation',type=float,default=1,help='whether to use truncation trick (< 1)')
         return parser
     
@@ -122,10 +123,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip)
 
         # Define stylegan2 decoder
         self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids)
@@ -272,7 +273,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         #sys.exit()
         
         self.netDecoderG_A.eval()
-        self.fake_B = F.interpolate(self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
+        self.fake_B = F.interpolate(self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A, randomize_noise=False)[0],size=self.opt.crop_size)
         
         if self.isTrain:
             self.netDecoderG_B.eval()
@@ -281,17 +282,17 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.z_rec_A= self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A = self.netG_B(self.fake_B)
-            self.rec_A = F.interpolate(self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
+            self.rec_A = F.interpolate(self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False)[0],size=self.opt.crop_size)
                 
             self.z_fake_A = self.netG_B(self.real_B)
-            self.fake_A = F.interpolate(self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
+            self.fake_A = F.interpolate(self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False)[0],size=self.opt.crop_size)
             
             if self.rec_noise:
                 self.fake_A_noisy1 = self.gaussian(self.fake_A)
                 self.z_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B = self.netG_A(self.fake_A)
-            self.rec_B = F.interpolate(self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
+            self.rec_B = F.interpolate(self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False)[0],size=self.opt.crop_size)
                 
             self.pred_real_A = self.netf_s(self.real_A)
            
@@ -429,12 +430,12 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed.
             self.z_idt_A = self.netG_A(self.real_B)
-            self.idt_A = F.interpolate(self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
+            self.idt_A = F.interpolate(self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False)[0],size=self.opt.crop_size)
             
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed.
             self.z_idt_B = self.netG_B(self.real_A)
-            self.idt_B = F.interpolate(self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0],size=self.opt.crop_size)
+            self.idt_B = F.interpolate(self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False)[0],size=self.opt.crop_size)
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0

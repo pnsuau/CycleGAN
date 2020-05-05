@@ -124,7 +124,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=0):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=0, wskip=False):
     """Create a generator
 
     Parameters:
@@ -156,9 +156,11 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
     norm_layer = get_norm_layer(norm_type=norm)
 
     if netG == 'resnet_9blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=9, decoder=decoder, wplus=wplus, init_type=init_type, init_gain=init_gain, gpu_ids=gpu_ids)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=9, decoder=decoder, wplus=wplus, wskip=wskip, init_type=init_type, init_gain=init_gain, gpu_ids=gpu_ids)
     elif netG == 'resnet_6blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=6, decoder=decoder, wplus=wplus, init_type=init_type, init_gain=init_gain, gpu_ids=gpu_ids)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=6, decoder=decoder, wplus=wplus, wskip=wskip, init_type=init_type, init_gain=init_gain, gpu_ids=gpu_ids)
+    elif netG == 'resnet_12blocks':
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, use_spectral=use_spectral, n_blocks=12, decoder=decoder, wplus=wplus, wskip=wskip, init_type=init_type, init_gain=init_gain, gpu_ids=gpu_ids)
     elif netG == 'unet_128':
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
@@ -354,8 +356,9 @@ class ResnetGenerator(nn.Module):
 
     We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
-
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', use_spectral=False, decoder=True, wplus=0, init_type='normal', init_gain=0.02, gpu_ids=[]):
+        
+    
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', use_spectral=False, decoder=True, wplus=0, wskip=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
         """Construct a Resnet-based generator
 
         Parameters:
@@ -369,6 +372,11 @@ class ResnetGenerator(nn.Module):
         """
         assert(n_blocks >= 0)
         super(ResnetGenerator, self).__init__()
+        self.bpoints = []
+        self.head = []
+        self.decoder = decoder
+        self.wplus = wplus
+        self.wskip = wskip
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
@@ -378,20 +386,29 @@ class ResnetGenerator(nn.Module):
                  spectral_norm(nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),use_spectral),
                  norm_layer(ngf),
                  nn.ReLU(True)]
-
+        head = [nn.ReflectionPad2d(3),
+                 spectral_norm(nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),use_spectral),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+        
         n_downsampling = 2
         for i in range(n_downsampling):  # add downsampling layers
             mult = 2 ** i
-            model += [spectral_norm(nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),use_spectral),
+            dsp = [spectral_norm(nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),use_spectral),
                       norm_layer(ngf * mult * 2),
                       nn.ReLU(True)]
+            model += dsp
+            head += dsp
 
         mult = 2 ** n_downsampling
         for i in range(n_blocks):       # add ResNet blocks
 
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
-
-        if decoder:
+            resblockl = [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+            #bpoints += resblockl
+            model += resblockl
+            self.bpoints += resblockl
+            
+        if self.decoder:
             for i in range(n_downsampling):  # add upsampling layers
                 mult = 2 ** (n_downsampling - i)
                 model += [spectral_norm(nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
@@ -419,10 +436,23 @@ class ResnetGenerator(nn.Module):
                     self.wblocks += [WBlock(ngf*mult,n_feat,init_type,init_gain,gpu_ids)]
                 
         self.model = nn.Sequential(*model)
-
+        self.head = nn.Sequential(*head)
+        
     def forward(self, input):
         """Standard forward"""
-        output = self.model(input)
+        if self.decoder:
+            output = self.model(input)
+        else:
+            res_outputs = []
+            output_head = self.head(input)
+            #print('bpoints size=',len(self.bpoints))
+            output = output_head
+            for bp in self.bpoints:
+                output = (bp(output))
+                res_outputs.append(output)
+            #print('res_outputs size=',len(res_outputs))
+            #sys.exit()
+            
         if hasattr(self,'to_z'):
             #output = self.mpool(output)
             #output = self.zrelu(output)
@@ -439,13 +469,25 @@ class ResnetGenerator(nn.Module):
             #    output1 = torch.flatten(output1,1)
             #    output1 = self.to_zs[n](output1)
             #    outputs.append(output1.unsqueeze(dim=0))
-            for wc in self.wblocks:
-                #print(type(wc))
-                outputs.append(wc(output))
+            if not self.wskip:
+                for wc in self.wblocks:
+                    #print(type(wc))
+                    outputs.append(wc(output))
+            else:
+                nou = 0
+                for o in res_outputs: # skip connections to latent heads
+                    outputs.append(self.wblocks[nou](o))
+                    nou += 1
+                for k in range(0,self.wplus-nou): # remaining latent heads
+                    outputs.append(self.wblocks[nou+k](output))
+            #sys.exit()
             return outputs
         else:
             return output
 
+    #def bpoint_hook(module, input, output):
+    #    self.bpoints.append(output)
+        
 class ResnetGenerator_attn(nn.Module):
     # initializers
     def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False):
@@ -602,7 +644,6 @@ class WBlock(nn.Module):
     def forward(self, x):
         out = self.w_block(x)
         return out
-
         
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""
