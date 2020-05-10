@@ -47,9 +47,9 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--train_f_s_B', action='store_true', help='if true f_s will be trained not only on domain A but also on domain B')
             parser.add_argument('--fs_light',action='store_true', help='whether to use a light (unet) network for f_s')
             parser.add_argument('--lr_f_s', type=float, default=0.0002, help='f_s learning rate')
-            parser.add_argument('--D_noise', type=float, default=0.1, help='whether to add instance noise to discriminator inputs')
+            parser.add_argument('--D_noise', type=float, default=0.0, help='whether to add instance noise to discriminator inputs')
             parser.add_argument('--D_label_smooth', action='store_true', help='whether to use one-sided label smoothing with discriminator')
-            parser.add_argument('--rec_noise', type=float, default=0.1, help='whether to add noise to reconstruction')
+            parser.add_argument('--rec_noise', type=float, default=0.0, help='whether to add noise to reconstruction')
         return parser
     
     def __init__(self, opt):
