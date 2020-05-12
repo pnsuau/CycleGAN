@@ -11,7 +11,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.autograd import Variable
 from .UNet import UNet
-from .decoder_stylegan2 import Generator as GeneratorStyleGAN2
+from .decoder_stylegan2 import Generator as GeneratorStyleGAN2, Discriminator as DiscriminatorStyleGAN2
 
 ###############################################################################
 # Helper Functions
@@ -236,8 +236,17 @@ def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights
     net = Discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='')
     return init_net(net, init_type, init_gain, gpu_ids)
 
-def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False):
-    net = GeneratorStyleGAN2(512,512,8)
+def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,size=512):
+    net = GeneratorStyleGAN2(size,512,8)
+    return init_net(net, init_type, init_gain, gpu_ids)
+
+def define_discriminatorstylegan2(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False):
+    net = DiscriminatorStyleGAN2(128)
+    #if len(gpu_ids) > 0:
+        #assert(torch.cuda.is_available())
+        #net.to(gpu_ids[0])
+        #net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
+    
     return init_net(net, init_type, init_gain, gpu_ids)    
 
 ##############################################################################
