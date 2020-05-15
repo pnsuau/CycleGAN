@@ -66,6 +66,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--mixing', type=float, default=0.9)
             parser.add_argument('--path_batch_shrink', type=int, default=2)
             parser.add_argument('--path_regularize', type=float, default=2)
+            parser.add_argument('--no_init_weigth_D_sty2', action='store_true')
+            parser.add_argument('--no_init_weigth_dec_sty2', action='store_true')
+            parser.add_argument('--no_init_weigth_G', action='store_true')
+            parser.add_argument('--load_weigth_decoder', action='store_true')
     
         return parser
     
@@ -146,52 +150,59 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         # Define stylegan2 decoder
         print('define decoder')
-        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size)
-        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size)
+        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2)
+        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2)
         
         # Load pretrained weights stylegan2 decoder
-        load_filename = 'network-snapshot-000421_ring.pt'
-        #load_filename = '/data1/stylegan2/results/00009-album-covers-stylegan2-512x512-2gpu-config-f/pytorch/network-snapshot-001684.pt'
-        load_path = os.path.join(self.save_dir, load_filename)
         
         nameDGA = 'DecoderG_A'
-        net = getattr(self, 'net' + nameDGA)
-        if isinstance(net, torch.nn.DataParallel):
-            net = net.module
-        print('loading the model from %s' % load_path)
-        print(self.device)
-        state_dict = torch.load(load_path, map_location=str(self.device))
-        if hasattr(state_dict, '_metadata'):
-            del state_dict._metadata
-        #net.load_state_dict(state_dict['g_ema'])
-        #self.set_requires_grad(net, True)
-                                
-        load_filename = 'network-snapshot-000721.pt'
-        load_path = os.path.join(self.save_dir, load_filename)
-        
         nameDGB = 'DecoderG_B'
-        net = getattr(self, 'net' + nameDGB)
+        if self.opt.load_weigth_decoder:
+            load_filename = 'network_A.pt'
+            load_path = os.path.join(self.save_dir, load_filename)
         
-        if isinstance(net, torch.nn.DataParallel):
-            net = net.module
-        state_dict = torch.load(load_path, map_location=str(self.device))
-        if hasattr(state_dict, '_metadata'):
-            del state_dict._metadata
-        #net.load_state_dict(state_dict['g_ema'])
-        #print(net.convs[0].conv.weight[0,1,0])
-        #self.set_requires_grad(net, True)
+            net = getattr(self, 'net' + nameDGA)
+            if isinstance(net, torch.nn.DataParallel):
+                net = net.module
+            print('loading the model from %s' % load_path)
+            
+            state_dict = torch.load(load_path, map_location=str(self.device))
+            if hasattr(state_dict, '_metadata'):
+                del state_dict._metadata
+            net.load_state_dict(state_dict['g_ema'])
+            self.set_requires_grad(net, True)
+                                
+            load_filename = 'network_A.pt'
+            load_path = os.path.join(self.save_dir, load_filename)
         
-        self.mean_latent_A = self.netDecoderG_A.module.mean_latent(4096)
-        self.mean_latent_B = self.netDecoderG_B.module.mean_latent(4096)
-        #self.mean_latent_A = self.mean_latent_B = None
+            net = getattr(self, 'net' + nameDGB)
+            
+            if isinstance(net, torch.nn.DataParallel):
+                net = net.module
+            print('loading the model from %s' % load_path)
+            
+            state_dict = torch.load(load_path, map_location=str(self.device))
+            if hasattr(state_dict, '_metadata'):
+                del state_dict._metadata
+            net.load_state_dict(state_dict['g_ema'])
+            self.set_requires_grad(net, True)
+
+        if self.opt.truncation < 1:
+            self.mean_latent_A = self.netDecoderG_A.module.mean_latent(4096)
+            self.mean_latent_B = self.netDecoderG_B.module.mean_latent(4096)
+        else:
+            self.mean_latent_A = None
+            self.mean_latent_B = None
+        
+            
                                 
         self.model_names += [nameDGA,nameDGB]
-
+    
         print('define dis dec')
-        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids)
+        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
         self.model_names += ['DiscriminatorDecoderG_A']
 
-        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids)
+        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
         self.model_names += ['DiscriminatorDecoderG_B']
         
         
@@ -300,11 +311,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
     def forward(self):
         self.z_fake_B = self.netG_A(self.real_A)
-        #print(self.z_fake_B)
+
         d = 1
-        #print('z_fake_B size=',len(self.z_fake_B),self.z_fake_B[1].size())
-        #print('z_fake_B size=',self.z_fake_B.size())
-        #sys.exit()
         
         self.netDecoderG_A.eval()
         #self.fake_B = F.interpolate(self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A)[0],size=self.opt.crop_size)
@@ -336,12 +344,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
            
             
             self.gt_pred_A = F.log_softmax(self.pred_real_A,dim= d).argmax(dim=d)
-            #print(self.gt_pred_A.shape)
-            #self.gt_pred_A = self.pred_real_A.argmax(dim=d)
             
-            pred_real_B = self.netf_s(self.real_B)
-            self.gt_pred_B = F.log_softmax(pred_real_B,dim=d).argmax(dim=d)
-            #self.gt_pred_B = pred_real_B.argmax(dim=d)
+            self.pred_real_B = self.netf_s(self.real_B)
+            self.gt_pred_B = F.log_softmax(self.pred_real_B,dim=d).argmax(dim=d)
             
             self.pred_fake_A = self.netf_s(self.fake_A)
             
@@ -525,20 +530,18 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_G += self.loss_out_mask_AB + self.loss_out_mask_BA
 
         #A
+        
         #self.noise_A = self.mixing_noise(self.opt.batch_size, 512, self.opt.mixing, self.device)
         #self.noise_A.requires_grad=True
-        #print(self.noise_A.shape)
+        
         #self.fake_img_g_loss_A, _ = self.netDecoderG_A(self.noise_A.unsqueeze(0),input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A)
-        #print('fake img',self.fake_img_g_loss_A.shape)
+        
         #self.fake_img_g_loss_A = F.interpolate(self.fake_img_g_loss_A,size=self.opt.crop_size)
-        #print(self.fake_img_g_loss_A.shape)
+        
         #self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_img_g_loss_A)
-        #print('dec',self.netDiscriminatorDecoderG_A['convs'][0])
+        
         self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_A)
-        #print(self.fake_pred_g_loss_A)
         self.loss_g_nonsaturating_A = self.g_nonsaturating_loss(self.fake_pred_g_loss_A)
-
-        #print(self.g_loss_A)
         
         path_batch_size = max(1, self.opt.batch_size // self.opt.path_batch_shrink)
 
@@ -551,22 +554,14 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.fake_A, self.latent_fake_A, self.mean_path_length_A
         )
 
-        #print('----',self.path_loss_A, self.mean_path_length_A, self.path_lengths_A)
-        #print('self.path_loss_A',self.path_loss_A)
         self.loss_weighted_path_A = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_A
         
         if self.opt.path_batch_shrink:
-            #self.loss_weighted_path_A += 0 * self.fake_img_path_loss_A[0, 0, 0, 0]
             self.loss_weighted_path_A += 0 * self.fake_A[0, 0, 0, 0]
 
         self.mean_path_length_avg_A = (
             self.reduce_sum(self.mean_path_length_A).item() / self.get_world_size()
         )
-        
-        if not self.niter %self.opt.g_reg_every == 0:
-            #print(self.loss_weighted_path_A)
-            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
-            #print(self.loss_weighted_path_A)
 
         #B
         
@@ -578,7 +573,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         #self.fake_img_g_loss_B = F.interpolate(self.fake_img_g_loss_B,size=self.opt.crop_size)
         
         #self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_img_g_loss_A)
-        self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_A)
+        self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_B)
         self.loss_g_nonsaturating_B = self.g_nonsaturating_loss(self.fake_pred_g_loss_B)
         
         
@@ -607,6 +602,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         )
 
         if not self.niter %self.opt.g_reg_every == 0:
+            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
             self.loss_weighted_path_B = 0* self.loss_weighted_path_B
         
 
