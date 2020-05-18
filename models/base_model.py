@@ -124,8 +124,8 @@ class BaseModel(ABC):
                 scheduler.step()
 
         lr_G = self.optimizers[0].param_groups[0]['lr']
-        lr_D = self.optimizers[1].param_groups[0]['lr']
-        print('learning rate G = %.7f' % lr_G, ' / learning rate D = %.7f' % lr_D)
+        #lr_D = self.optimizers[1].param_groups[0]['lr']
+        #print('learning rate G = %.7f' % lr_G, ' / learning rate D = %.7f' % lr_D)
 
     def get_current_visuals(self):
         """Return visualization images. train.py will display these images with visdom, and save the images to a HTML"""

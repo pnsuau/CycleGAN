@@ -11,7 +11,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.autograd import Variable
 from .UNet import UNet
-from .decoder_stylegan2 import Generator as GeneratorStyleGAN2
+from .decoder_stylegan2 import Generator as GeneratorStyleGAN2, Discriminator as DiscriminatorStyleGAN2
 
 ###############################################################################
 # Helper Functions
@@ -106,7 +106,7 @@ def init_weights(net, init_type='normal', init_gain=0.02):
     net.apply(init_func)  # apply the initialization function <init_func>
 
 
-def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=True):
     """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
     Parameters:
         net (network)      -- the network to be initialized
@@ -120,11 +120,12 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
         assert(torch.cuda.is_available())
         net.to(gpu_ids[0])
         net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
-    init_weights(net, init_type, init_gain=init_gain)
+    if init_weight:
+        init_weights(net, init_type, init_gain=init_gain)
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=0, wskip=False):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=0, wskip=False, init_weight=True):
     """Create a generator
 
     Parameters:
@@ -169,7 +170,11 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
         net = ResnetGenerator_attn(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
-    return init_net(net, init_type, init_gain, gpu_ids)
+    #if len(gpu_ids) > 0:
+        #assert(torch.cuda.is_available())
+        #net.to(gpu_ids[0])
+        #net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
+    return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
 
 def spectral_norm(module, mode=True):
@@ -234,13 +239,28 @@ def define_f(input_nc, nclasses, init_type='normal', init_gain=0.02, gpu_ids=[],
         net = UNet(classes=nclasses)
     return init_net(net, init_type, init_gain, gpu_ids)
 
-def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=True):
     net = Discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='')
-    return init_net(net, init_type, init_gain, gpu_ids)
+    return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
-def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False):
-    net = GeneratorStyleGAN2(512,512,8)
-    return init_net(net, init_type, init_gain, gpu_ids)    
+def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,size=512,init_weight=True):
+    net = GeneratorStyleGAN2(size,512,8)
+    #if len(gpu_ids) > 0:
+        #assert(torch.cuda.is_available())
+        #net.to(gpu_ids[0])
+        #net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
+    
+    return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
+
+
+def define_discriminatorstylegan2(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,init_weight=True):
+    net = DiscriminatorStyleGAN2(128)
+    #if len(gpu_ids) > 0:
+        #assert(torch.cuda.is_available())
+        #net.to(gpu_ids[0])
+        #net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
+    
+    return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)    
 
 ##############################################################################
 # Classes
