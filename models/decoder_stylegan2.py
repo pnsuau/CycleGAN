@@ -506,7 +506,6 @@ class Generator(nn.Module):
         #print('len(styles)=',len(styles),' / n_latent=',self.n_latent)
         #print(type(styles))
         #sys.exit()
-        
         if len(styles) < 2:
             inject_index = self.n_latent
 

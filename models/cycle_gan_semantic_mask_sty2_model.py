@@ -12,6 +12,10 @@ import os
 #import kornia.augmentation
 #import sys
 
+import random
+import math
+from torch import distributed as dist
+
 class CycleGANSemanticMaskSty2Model(BaseModel):
     #def name(self):
     #    return 'CycleGANModel'
@@ -56,6 +60,18 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--wplus', type=int, default=0, help='work in W+ space, specifies the Wplus number of style activations required')
             parser.add_argument('--wskip', action='store_true', help='whether to use skip connections to latent wplus heads')
             parser.add_argument('--truncation',type=float,default=1,help='whether to use truncation trick (< 1)')
+            parser.add_argument('--decoder_size', type=int, default=512)
+            parser.add_argument('--d_reg_every', type=int, default=16)
+            parser.add_argument('--g_reg_every', type=int, default=4)
+            parser.add_argument('--r1', type=float, default=10)
+            parser.add_argument('--mixing', type=float, default=0.9)
+            parser.add_argument('--path_batch_shrink', type=int, default=2)
+            parser.add_argument('--path_regularize', type=float, default=2)
+            parser.add_argument('--no_init_weigth_D_sty2', action='store_true')
+            parser.add_argument('--no_init_weigth_dec_sty2', action='store_true')
+            parser.add_argument('--no_init_weigth_G', action='store_true')
+            parser.add_argument('--load_weigth_decoder', action='store_true')
+    
         return parser
     
     def __init__(self, opt):
@@ -66,13 +82,15 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         if opt.disc_in_mask:
             losses += ['D_A_mask', 'D_B_mask']
         losses += ['D_A', 'D_B']
-
+        losses=[]
         if opt.out_mask:
             losses += ['out_mask_AB','out_mask_BA']
 
         losses += ['cycle_A', 'idt_A', 
                    'cycle_B', 'idt_B', 
                    'sem_AB', 'sem_BA', 'f_s']
+
+        losses += ['g_nonsaturating_A','g_nonsaturating_B','weighted_path_A','weighted_path_B','d_dec_A','d_dec_B','d_dec_reg_A', 'd_dec_reg_B']
                   
         self.loss_names = losses
         self.truncation = opt.truncation
@@ -108,19 +126,22 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if opt.disc_in_mask:
             self.visual_names += visual_names_mask_in
+
+        #self.visual_names += ['fake_img_path_loss_A','fake_img_path_loss_B']
             
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G_A', 'G_B', 'f_s']
             if opt.disc_in_mask:
                 self.model_names += ['D_A_mask', 'D_B_mask']
-            self.model_names += ['D_A', 'D_B']
+            #self.model_names += ['D_A', 'D_B']
         else:  # during test time, only load Gs
             self.model_names = ['G_A', 'f_s']
 
         # load/define networks
         # The naming conversion is different from those used in the paper
         # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
+        print('define gen')
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
                                         not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip)
@@ -129,57 +150,75 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                                         not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip)
 
         # Define stylegan2 decoder
-        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids)
-        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids)
+        print('define decoder')
+        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2)
+        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2)
         
         # Load pretrained weights stylegan2 decoder
-        load_filename = 'network-snapshot-000421_ring.pt'
-        #load_filename = '/data1/stylegan2/results/00009-album-covers-stylegan2-512x512-2gpu-config-f/pytorch/network-snapshot-001684.pt'
-        load_path = os.path.join(self.save_dir, load_filename)
         
         nameDGA = 'DecoderG_A'
-        net = getattr(self, 'net' + nameDGA)
-        if isinstance(net, torch.nn.DataParallel):
-            net = net.module
-        print('loading the model from %s' % load_path)
-        #print(self.device)
-        state_dict = torch.load(load_path, map_location=str(self.device))
-        if hasattr(state_dict, '_metadata'):
-            del state_dict._metadata
-        net.load_state_dict(state_dict['g_ema'])
-        #self.set_requires_grad(net, True)
-                                
-        load_filename = 'network-snapshot-000721.pt'
-        load_path = os.path.join(self.save_dir, load_filename)
-        
         nameDGB = 'DecoderG_B'
-        net = getattr(self, 'net' + nameDGB)
+        if self.opt.load_weigth_decoder:
+            load_filename = 'network_A.pt'
+            load_path = os.path.join(self.save_dir, load_filename)
         
-        if isinstance(net, torch.nn.DataParallel):
-            net = net.module
-        state_dict = torch.load(load_path, map_location=str(self.device))
-        if hasattr(state_dict, '_metadata'):
-            del state_dict._metadata
-        net.load_state_dict(state_dict['g_ema'])
-        #print(net.convs[0].conv.weight[0,1,0])
-        #self.set_requires_grad(net, True)
+            net = getattr(self, 'net' + nameDGA)
+            if isinstance(net, torch.nn.DataParallel):
+                net = net.module
+            print('loading the model from %s' % load_path)
+            
+            state_dict = torch.load(load_path, map_location=str(self.device))
+            if hasattr(state_dict, '_metadata'):
+                del state_dict._metadata
+            net.load_state_dict(state_dict['g_ema'])
+            self.set_requires_grad(net, True)
+                                
+            load_filename = 'network_A.pt'
+            load_path = os.path.join(self.save_dir, load_filename)
         
-        self.mean_latent_A = self.netDecoderG_A.module.mean_latent(4096)
-        self.mean_latent_B = self.netDecoderG_B.module.mean_latent(4096)
-        #self.mean_latent_A = self.mean_latent_B = None
+            net = getattr(self, 'net' + nameDGB)
+            
+            if isinstance(net, torch.nn.DataParallel):
+                net = net.module
+            print('loading the model from %s' % load_path)
+            
+            state_dict = torch.load(load_path, map_location=str(self.device))
+            if hasattr(state_dict, '_metadata'):
+                del state_dict._metadata
+            net.load_state_dict(state_dict['g_ema'])
+            self.set_requires_grad(net, True)
+
+        if self.opt.truncation < 1:
+            self.mean_latent_A = self.netDecoderG_A.module.mean_latent(4096)
+            self.mean_latent_B = self.netDecoderG_B.module.mean_latent(4096)
+        else:
+            self.mean_latent_A = None
+            self.mean_latent_B = None
+        
+            
                                 
         self.model_names += [nameDGA,nameDGB]
+    
+        print('define dis dec')
+        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
+        self.model_names += ['DiscriminatorDecoderG_A']
+
+        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
+        self.model_names += ['DiscriminatorDecoderG_B']
+        
         
         if self.isTrain:
-            self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
-                                            opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
-                                            opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
-                                            opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
-                                            opt.init_type, opt.init_gain, self.gpu_ids)
+            print('define disc')
+            #self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
+                                            #opt.netD,
+                                            #opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
+                                            #opt.init_type, opt.init_gain, self.gpu_ids)
+            #self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
+                                            #opt.netD,
+                                            #opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
+                                            #opt.init_type, opt.init_gain, self.gpu_ids)
             if opt.disc_in_mask:
+                print('define disc mask')
                 self.netD_A_mask = networks.define_D(opt.output_nc, opt.ndf,
                                                      opt.netD,
                                                      opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral,
@@ -220,24 +259,30 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                     self.criterionMask = L1_Charbonnier_loss(opt.charbonnier_eps)
                     
             # initialize optimizers
-            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()),
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
-            if opt.disc_in_mask:
-                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(),self.netD_B.parameters(),self.netD_A_mask.parameters(), self.netD_B_mask.parameters()),
-                                                lr=opt.D_lr, betas=(opt.beta1, 0.999))
-            else:    
-                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
-                                                lr=opt.D_lr, betas=(opt.beta1, 0.999))
+            #if opt.disc_in_mask:
+                #self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(),self.netD_B.parameters(),self.netD_A_mask.parameters(), self.netD_B_mask.parameters()),
+                                                #lr=opt.D_lr, betas=(opt.beta1, 0.999))
+            #else:    
+                #self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
+                                                #lr=opt.D_lr, betas=(opt.beta1, 0.999))
             self.optimizer_f_s = torch.optim.Adam(self.netf_s.parameters(), lr=opt.lr_f_s, betas=(opt.beta1, 0.999))
-            print('f defined')
+
+            self.optimizer_D_Decoder = torch.optim.Adam(itertools.chain(self.netDiscriminatorDecoderG_A.parameters(),self.netDiscriminatorDecoderG_B.parameters()),
+                                            lr=opt.D_lr, betas=(opt.beta1, 0.999))
             self.optimizers = []
             self.optimizers.append(self.optimizer_G)
-            self.optimizers.append(self.optimizer_D)
+            #self.optimizers.append(self.optimizer_D)
             #beniz: not adding optimizers f_s (?)
 
             self.rec_noise = opt.rec_noise
             self.stddev = 0.1
             self.D_noise = opt.D_noise
+
+            self.niter=0
+            self.mean_path_length_A = 0
+            self.mean_path_length_B = 0
             #if opt.D_noise:   
                 #self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
                 #                                   kornia.augmentation.RandomHorizontalFlip(p=0.5),
@@ -267,13 +312,11 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
     def forward(self):
         self.z_fake_B = self.netG_A(self.real_A)
+
         d = 1
-        #print('z_fake_B size=',len(self.z_fake_B),self.z_fake_B[1].size())
-        #print('z_fake_B size=',self.z_fake_B.size())
-        #sys.exit()
         
         self.netDecoderG_A.eval()
-        self.fake_B = F.interpolate(self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A, randomize_noise=False)[0],size=self.opt.crop_size)
+        self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,return_latents=True)
         
         if self.isTrain:
             self.netDecoderG_B.eval()
@@ -282,28 +325,25 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.z_rec_A= self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A = self.netG_B(self.fake_B)
-            self.rec_A = F.interpolate(self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False)[0],size=self.opt.crop_size)
+            self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False)[0]
                 
             self.z_fake_A = self.netG_B(self.real_B)
-            self.fake_A = F.interpolate(self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False)[0],size=self.opt.crop_size)
+            self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True)
             
             if self.rec_noise:
                 self.fake_A_noisy1 = self.gaussian(self.fake_A)
                 self.z_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B = self.netG_A(self.fake_A)
-            self.rec_B = F.interpolate(self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False)[0],size=self.opt.crop_size)
+            self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False)[0]
                 
             self.pred_real_A = self.netf_s(self.real_A)
            
             
             self.gt_pred_A = F.log_softmax(self.pred_real_A,dim= d).argmax(dim=d)
-            #print(self.gt_pred_A.shape)
-            #self.gt_pred_A = self.pred_real_A.argmax(dim=d)
             
-            pred_real_B = self.netf_s(self.real_B)
-            self.gt_pred_B = F.log_softmax(pred_real_B,dim=d).argmax(dim=d)
-            #self.gt_pred_B = pred_real_B.argmax(dim=d)
+            self.pred_real_B = self.netf_s(self.real_B)
+            self.gt_pred_B = F.log_softmax(self.pred_real_B,dim=d).argmax(dim=d)
             
             self.pred_fake_A = self.netf_s(self.fake_A)
             
@@ -430,12 +470,12 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed.
             self.z_idt_A = self.netG_A(self.real_B)
-            self.idt_A = F.interpolate(self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False)[0],size=self.opt.crop_size)
+            self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False)[0]
             
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed.
             self.z_idt_B = self.netG_B(self.real_A)
-            self.idt_B = F.interpolate(self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False)[0],size=self.opt.crop_size)
+            self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False)[0]
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
@@ -445,22 +485,22 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         #self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # removed a factor 2...
         # GAN loss D_B(G_B(B))
         #self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
-        if self.disc_in_mask:
-            self.loss_G_A_mask = self.criterionGAN(self.netD_A(self.fake_B_mask_in), True)
-            self.loss_G_B_mask = self.criterionGAN(self.netD_B(self.fake_A_mask_in), True)
-            self.loss_G_A = self.criterionGAN(self.netD_A_mask(self.fake_B_mask), True)
-            self.loss_G_B = self.criterionGAN(self.netD_B_mask(self.fake_A_mask), True)
-        else:
+        #if self.disc_in_mask:
+            #self.loss_G_A_mask = self.criterionGAN(self.netD_A(self.fake_B_mask_in), True)
+            #self.loss_G_B_mask = self.criterionGAN(self.netD_B(self.fake_A_mask_in), True)
+            #self.loss_G_A = self.criterionGAN(self.netD_A_mask(self.fake_B_mask), True)
+            #self.loss_G_B = self.criterionGAN(self.netD_B_mask(self.fake_A_mask), True)
+        #else:
             # GAN loss D_A(G_A(A))
-            self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
+            #self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
             # GAN loss D_B(G_B(B))
-            self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
+            #self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss
         self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
         # Backward cycle loss
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         # combined loss standard cyclegan
-        self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
+        self.loss_G = self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B #self.loss_G_A + self.loss_G_B + 
         if self.disc_in_mask:
             self.loss_G += self.loss_G_A_mask + self.loss_G_B_mask
 
@@ -486,17 +526,143 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_out_mask_BA = self.criterionMask( self.real_B_out_mask, self.fake_A_out_mask) * lambda_out_mask
             self.loss_G += self.loss_out_mask_AB + self.loss_out_mask_BA
 
+        #A
+        
+        #self.noise_A = self.mixing_noise(self.opt.batch_size, 512, self.opt.mixing, self.device)
+        #self.noise_A.requires_grad=True
+        
+        #self.fake_img_g_loss_A, _ = self.netDecoderG_A(self.noise_A.unsqueeze(0),input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A)
+        
+        #self.fake_img_g_loss_A = F.interpolate(self.fake_img_g_loss_A,size=self.opt.crop_size)
+        
+        #self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_img_g_loss_A)
+        
+        self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_A)
+        self.loss_g_nonsaturating_A = self.g_nonsaturating_loss(self.fake_pred_g_loss_A)
+        
+        path_batch_size = max(1, self.opt.batch_size // self.opt.path_batch_shrink)
+
+        #self.noise_A_2 = self.mixing_noise(path_batch_size, 512, self.opt.mixing, self.device)
+        #self.noise_A_2.requires_grad=True
+
+        #self.fake_img_path_loss_A, self.latents_path_loss_A = self.netDecoderG_A(self.noise_A_2.unsqueeze(1), return_latents=True,input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A)
+        
+        self.path_loss_A, self.mean_path_length_A, self.path_lengths_A = self.g_path_regularize(
+            self.fake_A, self.latent_fake_A, self.mean_path_length_A
+        )
+
+        self.loss_weighted_path_A = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_A
+        
+        if self.opt.path_batch_shrink:
+            self.loss_weighted_path_A += 0 * self.fake_A[0, 0, 0, 0]
+
+        self.mean_path_length_avg_A = (
+            self.reduce_sum(self.mean_path_length_A).item() / self.get_world_size()
+        )
+
+        #B
+        
+        #self.noise_B = self.mixing_noise(self.opt.batch_size, 512, self.opt.mixing, self.device)
+        #self.noise_B.requires_grad=True
+        
+        #self.fake_img_g_loss_B, _ = self.netDecoderG_B(self.noise_B.unsqueeze(0),input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_B)
+        
+        #self.fake_img_g_loss_B = F.interpolate(self.fake_img_g_loss_B,size=self.opt.crop_size)
+        
+        #self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_img_g_loss_A)
+        self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_B)
+        self.loss_g_nonsaturating_B = self.g_nonsaturating_loss(self.fake_pred_g_loss_B)
+        
+        
+        path_batch_size = max(1, self.opt.batch_size // self.opt.path_batch_shrink)
+
+        #self.noise_B_2 = self.mixing_noise(path_batch_size, 512, self.opt.mixing, self.device)
+        #self.noise_B_2.requires_grad=True
+
+        #self.fake_img_path_loss_B, self.latents_path_loss_B = self.netDecoderG_B(self.noise_B_2.unsqueeze(1), return_latents=True,input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_B)
+        
+        #self.path_loss_B, self.mean_path_length_B, self.path_lengths_B = self.g_path_regularize(
+            #self.fake_img_path_loss_B, self.latents_path_loss_B, self.mean_path_length_B
+        #)
+        self.path_loss_B, self.mean_path_length_B, self.path_lengths_B = self.g_path_regularize(
+            self.fake_B, self.latent_fake_B, self.mean_path_length_B
+        )
+
+        self.loss_weighted_path_B = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_B
+        
+        if self.opt.path_batch_shrink:
+            #self.loss_weighted_path_B += 0 * self.fake_img_path_loss_B[0, 0, 0, 0]
+            self.loss_weighted_path_B += 0 * self.fake_B[0, 0, 0, 0]
+
+        self.mean_path_length_avg_B = (
+            self.reduce_sum(self.mean_path_length_B).item() / self.get_world_size()
+        )
+
+        if not self.niter %self.opt.g_reg_every == 0:
+            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
+            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
+        
+
+        self.loss_G += self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B  + self.loss_weighted_path_A + self.loss_weighted_path_B
+        
         self.loss_G.backward(retain_graph=True)
+
+    def backward_discriminator_decoder(self):
+        real_pred_A = self.netDiscriminatorDecoderG_A(self.real_A)
+        fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A)
+        print('real pred fake pred',real_pred_A,fake_pred_A)
+
+        self.loss_d_dec_A = self.d_logistic_loss(real_pred_A,fake_pred_A).unsqueeze(0)
+
+        #print(self.loss_d_dec_A)
+        
+
+        
+        real_pred_B = self.netDiscriminatorDecoderG_B(self.real_B)
+        fake_pred_B = self.netDiscriminatorDecoderG_B(self.fake_B)
+        self.loss_d_dec_B = self.d_logistic_loss(real_pred_B,fake_pred_B).unsqueeze(0)
+
+        self.loss_d_dec = self.loss_d_dec_A + self.loss_d_dec_B
+        #print(self.d_loss)
+        #print(self.d_loss.shape)
+
+        
+        self.real_A.requires_grad = True
+        real_pred_A_2 = self.netDiscriminatorDecoderG_A(self.real_A)
+        r1_loss_A = self.d_r1_loss(real_pred_A_2, self.real_A)
+        
+        self.loss_d_dec_reg_A=(self.opt.r1 / 2 * r1_loss_A * self.opt.d_reg_every + 0 * real_pred_A[0])
+
+        self.real_B.requires_grad = True
+        real_pred_B_2 = self.netDiscriminatorDecoderG_B(self.real_B)
+        r1_loss_B = self.d_r1_loss(real_pred_B_2, self.real_B)
+        
+        self.loss_d_dec_reg_B=(self.opt.r1 / 2 * r1_loss_B * self.opt.d_reg_every + 0 * real_pred_B[0])
+
+
+        if not self.niter %self.opt.d_reg_every == 0:
+            #print('no reg')
+            self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
+            self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
+        #else:
+            #print('reg')
+
+        self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
+
+
+
+        self.loss_d_dec.backward()
 
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward
         self.forward()      # compute fake images and reconstruction images.
         # G_A and G_B
-        if self.disc_in_mask:
-            self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_mask, self.netD_B_mask], False)
-        else:
-            self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
+        #if self.disc_in_mask:
+            #self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_mask, self.netD_B_mask], False)
+        #else:
+            #self.set_requires_grad([self.netD_A, self.netD_B], False)  # Ds require no gradients when optimizing Gs
+        self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], False)
         self.set_requires_grad([self.netG_A, self.netG_B], True)
         self.set_requires_grad([self.netDecoderG_A, self.netDecoderG_B], True)
         self.netDecoderG_A.zero_grad()
@@ -505,33 +671,146 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.backward_G()             # calculate gradients for G_A and G_B
         self.optimizer_G.step()       # update G_A and G_B's weights
         # D_A and D_B
-        if self.disc_in_mask:
-            self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_mask, self.netD_B_mask], True)
-        else:
-            self.set_requires_grad([self.netD_A, self.netD_B], True)
-        self.optimizer_D.zero_grad()   # set D_A and D_B's gradients to zero
+        #if self.disc_in_mask:
+            #self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_mask, self.netD_B_mask], True)
+        #else:
+            #self.set_requires_grad([self.netD_A, self.netD_B], True)
+        #self.optimizer_D.zero_grad()   # set D_A and D_B's gradients to zero
 
-        if self.disc_in_mask:
-            self.backward_D_A_mask_in()
-            self.backward_D_B_mask_in()
-            self.backward_D_A_mask()
-            self.backward_D_B_mask()
-        else:
-            self.backward_D_A()      # calculate gradients for D_A
-            self.backward_D_B()      # calculate gradients for D_B
+        #if self.disc_in_mask:
+            #self.backward_D_A_mask_in()
+            #self.backward_D_B_mask_in()
+            #self.backward_D_A_mask()
+            #self.backward_D_B_mask()
+        #else:
+            #self.backward_D_A()      # calculate gradients for D_A
+            #self.backward_D_B()      # calculate gradients for D_B
             
-        self.optimizer_D.step()  # update D_A and D_B's weights
-        if self.disc_in_mask:
-            self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_mask, self.netD_B_mask], False)
-        else:
-            self.set_requires_grad([self.netD_A, self.netD_B], False)            
+        #self.optimizer_D.step()  # update D_A and D_B's weights
+        #if self.disc_in_mask:
+            #self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_mask, self.netD_B_mask], False)
+        #else:
+            #self.set_requires_grad([self.netD_A, self.netD_B], False)            
         self.set_requires_grad([self.netf_s], True)
         # f_s
         self.optimizer_f_s.zero_grad()
         self.backward_f_s()
         self.optimizer_f_s.step()
 
+        self.optimizer_D_Decoder.zero_grad()
+        self.niter = self.niter +1
+        self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], True)
+        self.backward_discriminator_decoder()
+        self.optimizer_D_Decoder.step()
+        self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], False)
+
     def gaussian(self, in_tensor):
         noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, self.stddev).cuda() + in_tensor
         # noisy_tensor = 2 * (noisy_image - noisy_image.min()) / (noisy_image.max() - noisy_image.min()) - 1
         return noisy_image
+
+
+    def d_logistic_loss(self,real_pred, fake_pred):
+        real_loss = F.softplus(-real_pred)
+        fake_loss = F.softplus(fake_pred)
+
+        return real_loss.mean() + fake_loss.mean()
+
+
+    def d_r1_loss(self,real_pred, real_img):
+        grad_real, = torch.autograd.grad(
+            outputs=real_pred.sum(), inputs=real_img#, create_graph=True,allow_unused=True
+        )
+        
+        grad_penalty = grad_real.pow(2).view(grad_real.shape[0], -1).sum(1).mean()
+        
+        return grad_penalty
+
+
+    def g_nonsaturating_loss(self,fake_pred):
+        loss = F.softplus(-fake_pred).mean()
+        return loss
+
+
+    def g_path_regularize(self,fake_img, latents, mean_path_length, decay=0.01):
+        noise = torch.randn_like(fake_img) / math.sqrt(
+            fake_img.shape[2] * fake_img.shape[3]
+        )
+        #print(noise.shape)
+        
+        #print(fake_img.shape)
+        noise.requires_grad=True
+        #latents.requires_grad=True
+        #print(latents.shape)
+        #print((fake_img * noise).sum())
+        #print(latents.grad)
+        #print((fake_img * noise).sum().grad)
+        grad, = torch.autograd.grad(
+            outputs=(fake_img * noise).sum(), inputs=latents, create_graph=True#,allow_unused=True
+        )
+        #print(grad)
+        path_lengths = torch.sqrt(grad.pow(2).sum(2).mean(1))
+
+        path_mean = mean_path_length + decay * (path_lengths.mean() - mean_path_length)
+
+        path_penalty = (path_lengths - path_mean).pow(2).mean()
+
+        return path_penalty, path_mean.detach(), path_lengths
+
+    def make_noise(self,batch, latent_dim, n_noise, device):
+        
+        if n_noise == 1:
+            return torch.randn(batch, latent_dim, device=device)
+
+        noises = torch.randn(n_noise, batch, latent_dim, device=device)#.unbind(0)
+
+        #print('ok')
+
+        return noises
+
+    def mixing_noise(self,batch, latent_dim, prob, device):
+        log_size = int(math.log(128, 2))
+        n_latent = log_size * 2 - 2
+        temp = random.random()
+        #temp=0.95
+        #print('temp',temp)
+        #print(prob)
+        temp_noise = self.make_noise(batch, latent_dim, 2, device)
+        if prob > 0 and temp < prob:
+            #print('ok')
+            inject_index = random.randint(1, n_latent - 1)
+        else:
+            inject_index = n_latent
+        #temp_noise = self.make_noise(batch, latent_dim, 1, device)
+        #print(temp_noise.shape)
+        #print(temp_noise[0].shape)
+        latent = temp_noise[0].unsqueeze(1).repeat(1, inject_index, 1)
+        latent2 = temp_noise[1].unsqueeze(1).repeat(1, n_latent - inject_index, 1)
+        latent = torch.cat([latent, latent2], 1)
+        latents = []
+        #print(latent.shape)
+        return latent
+
+    def reduce_sum(self,tensor):
+        if not dist.is_available():
+            return tensor
+
+        if not dist.is_initialized():
+            return tensor
+
+        tensor = tensor.clone()
+        dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+
+        return tensor
+
+    def get_world_size(self):
+        if not dist.is_available():
+            return 1
+
+        if not dist.is_initialized():
+            return 1
+
+        return dist.get_world_size()
+
+
+
