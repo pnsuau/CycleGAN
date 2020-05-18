@@ -143,10 +143,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         print('define gen')
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=2**(2*int(math.log(self.opt.decoder_size,2)-2)),img_size=self.opt.decoder_size)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=2**(2*int(math.log(self.opt.decoder_size,2)-2)),img_size=self.opt.decoder_size)
 
         # Define stylegan2 decoder
         print('define decoder')
@@ -199,10 +199,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.model_names += [nameDGA,nameDGB]
     
         print('define dis dec')
-        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
+        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size=self.opt.crop_size)
         self.model_names += ['DiscriminatorDecoderG_A']
 
-        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
+        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size=self.opt.crop_size)
         self.model_names += ['DiscriminatorDecoderG_B']
         
         
@@ -539,7 +539,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         #self.fake_img_g_loss_A = F.interpolate(self.fake_img_g_loss_A,size=self.opt.crop_size)
         
         #self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_img_g_loss_A)
-        
+
+
         self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_A)
         self.loss_g_nonsaturating_A = self.g_nonsaturating_loss(self.fake_pred_g_loss_A)
         
@@ -613,7 +614,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
     def backward_discriminator_decoder(self):
         real_pred_A = self.netDiscriminatorDecoderG_A(self.real_A)
         fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A)
-        print('real pred fake pred',real_pred_A,fake_pred_A)
 
         self.loss_d_dec_A = self.d_logistic_loss(real_pred_A,fake_pred_A).unsqueeze(0)
 
