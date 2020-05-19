@@ -526,82 +526,58 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_out_mask_BA = self.criterionMask( self.real_B_out_mask, self.fake_A_out_mask) * lambda_out_mask
             self.loss_G += self.loss_out_mask_AB + self.loss_out_mask_BA
 
+
+        compute_g_regularize = True
+        if self.opt.path_regularize == 0.0 or not self.niter % self.opt.g_reg_every == 0:
+            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
+            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
+            compute_g_regularize = False
+            
         #A
-        
-        #self.noise_A = self.mixing_noise(self.opt.batch_size, 512, self.opt.mixing, self.device)
-        #self.noise_A.requires_grad=True
-        
-        #self.fake_img_g_loss_A, _ = self.netDecoderG_A(self.noise_A.unsqueeze(0),input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A)
-        
-        #self.fake_img_g_loss_A = F.interpolate(self.fake_img_g_loss_A,size=self.opt.crop_size)
-        
-        #self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_img_g_loss_A)
-        
         self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_A)
         self.loss_g_nonsaturating_A = self.g_nonsaturating_loss(self.fake_pred_g_loss_A)
         
         path_batch_size = max(1, self.opt.batch_size // self.opt.path_batch_shrink)
 
-        #self.noise_A_2 = self.mixing_noise(path_batch_size, 512, self.opt.mixing, self.device)
-        #self.noise_A_2.requires_grad=True
+        if compute_g_regularize:
+            self.path_loss_A, self.mean_path_length_A, self.path_lengths_A = self.g_path_regularize(
+                self.fake_A, self.latent_fake_A, self.mean_path_length_A
+            )
 
-        #self.fake_img_path_loss_A, self.latents_path_loss_A = self.netDecoderG_A(self.noise_A_2.unsqueeze(1), return_latents=True,input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_A)
+            self.loss_weighted_path_A = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_A
         
-        self.path_loss_A, self.mean_path_length_A, self.path_lengths_A = self.g_path_regularize(
-            self.fake_A, self.latent_fake_A, self.mean_path_length_A
-        )
+            if self.opt.path_batch_shrink:
+                self.loss_weighted_path_A += 0 * self.fake_A[0, 0, 0, 0]
 
-        self.loss_weighted_path_A = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_A
-        
-        if self.opt.path_batch_shrink:
-            self.loss_weighted_path_A += 0 * self.fake_A[0, 0, 0, 0]
-
-        self.mean_path_length_avg_A = (
-            self.reduce_sum(self.mean_path_length_A).item() / self.get_world_size()
-        )
+            self.mean_path_length_avg_A = (
+                self.reduce_sum(self.mean_path_length_A).item() / self.get_world_size()
+            )
+        else:
+            self.loss_weighted_path_A = 0.0
 
         #B
-        
-        #self.noise_B = self.mixing_noise(self.opt.batch_size, 512, self.opt.mixing, self.device)
-        #self.noise_B.requires_grad=True
-        
-        #self.fake_img_g_loss_B, _ = self.netDecoderG_B(self.noise_B.unsqueeze(0),input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_B)
-        
-        #self.fake_img_g_loss_B = F.interpolate(self.fake_img_g_loss_B,size=self.opt.crop_size)
-        
-        #self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_img_g_loss_A)
         self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_B)
         self.loss_g_nonsaturating_B = self.g_nonsaturating_loss(self.fake_pred_g_loss_B)
         
-        
         path_batch_size = max(1, self.opt.batch_size // self.opt.path_batch_shrink)
 
-        #self.noise_B_2 = self.mixing_noise(path_batch_size, 512, self.opt.mixing, self.device)
-        #self.noise_B_2.requires_grad=True
+        if compute_g_regularize:
+            self.path_loss_B, self.mean_path_length_B, self.path_lengths_B = self.g_path_regularize(
+                self.fake_B, self.latent_fake_B, self.mean_path_length_B
+            )
 
-        #self.fake_img_path_loss_B, self.latents_path_loss_B = self.netDecoderG_B(self.noise_B_2.unsqueeze(1), return_latents=True,input_is_latent=True,truncation=self.truncation, truncation_latent=self.mean_latent_B)
+            self.loss_weighted_path_B = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_B
         
-        #self.path_loss_B, self.mean_path_length_B, self.path_lengths_B = self.g_path_regularize(
-            #self.fake_img_path_loss_B, self.latents_path_loss_B, self.mean_path_length_B
-        #)
-        self.path_loss_B, self.mean_path_length_B, self.path_lengths_B = self.g_path_regularize(
-            self.fake_B, self.latent_fake_B, self.mean_path_length_B
-        )
+            if self.opt.path_batch_shrink:
+                #self.loss_weighted_path_B += 0 * self.fake_img_path_loss_B[0, 0, 0, 0]
+                self.loss_weighted_path_B += 0 * self.fake_B[0, 0, 0, 0]
 
-        self.loss_weighted_path_B = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_B
-        
-        if self.opt.path_batch_shrink:
-            #self.loss_weighted_path_B += 0 * self.fake_img_path_loss_B[0, 0, 0, 0]
-            self.loss_weighted_path_B += 0 * self.fake_B[0, 0, 0, 0]
-
-        self.mean_path_length_avg_B = (
-            self.reduce_sum(self.mean_path_length_B).item() / self.get_world_size()
-        )
-
-        if not self.niter %self.opt.g_reg_every == 0:
-            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
-            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
-        
+            self.mean_path_length_avg_B = (
+                self.reduce_sum(self.mean_path_length_B).item() / self.get_world_size()
+            )
+        else:
+            self.loss_weighted_path_B = 0.0
+                    
 
         self.loss_G += self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B  + self.loss_weighted_path_A + self.loss_weighted_path_B
         
@@ -610,7 +586,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
     def backward_discriminator_decoder(self):
         real_pred_A = self.netDiscriminatorDecoderG_A(self.real_A)
         fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A)
-        print('real pred fake pred',real_pred_A,fake_pred_A)
+        #print('real pred fake pred',real_pred_A,fake_pred_A)
 
         self.loss_d_dec_A = self.d_logistic_loss(real_pred_A,fake_pred_A).unsqueeze(0)
 
