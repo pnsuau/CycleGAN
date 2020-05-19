@@ -529,8 +529,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         compute_g_regularize = True
         if self.opt.path_regularize == 0.0 or not self.niter % self.opt.g_reg_every == 0:
-            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
-            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
+            self.loss_weighted_path_A = 0
+            self.loss_weighted_path_B = 0
             compute_g_regularize = False
             
         #A
