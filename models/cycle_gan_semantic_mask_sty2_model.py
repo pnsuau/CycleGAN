@@ -46,6 +46,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
             parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
+            parser.add_argument('--lambda_G', type=float, default=1.0, help='weight for generator loss')
             parser.add_argument('--out_mask', action='store_true', help='use loss out mask')
             parser.add_argument('--lambda_out_mask', type=float, default=10.0, help='weight for loss out mask')
             parser.add_argument('--loss_out_mask', type=str, default='L1', help='loss mask')
@@ -466,6 +467,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         lambda_idt = self.opt.lambda_identity
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
+        lambda_G = self.opt.lambda_G
         # Identity loss
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed.
@@ -575,13 +577,13 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_weighted_path_B = 0.0
                     
 
-        self.loss_G += self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B  + self.loss_weighted_path_A + self.loss_weighted_path_B
+        self.loss_G += self.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)  + self.loss_weighted_path_A + self.loss_weighted_path_B
         
         self.loss_G.backward(retain_graph=True)
 
     def backward_discriminator_decoder(self):
         real_pred_A = self.netDiscriminatorDecoderG_A(self.real_A)
-        fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A)
+        fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A_pool.query(self.fake_A))
 
         self.loss_d_dec_A = self.d_logistic_loss(real_pred_A,fake_pred_A).unsqueeze(0)
 
@@ -590,7 +592,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         
         real_pred_B = self.netDiscriminatorDecoderG_B(self.real_B)
-        fake_pred_B = self.netDiscriminatorDecoderG_B(self.fake_B)
+        fake_pred_B = self.netDiscriminatorDecoderG_B(self.fake_B_pool.query(self.fake_B))
         self.loss_d_dec_B = self.d_logistic_loss(real_pred_B,fake_pred_B).unsqueeze(0)
 
         self.loss_d_dec = self.loss_d_dec_A + self.loss_d_dec_B
