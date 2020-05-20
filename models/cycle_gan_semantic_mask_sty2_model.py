@@ -533,8 +533,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         compute_g_regularize = True
         if self.opt.path_regularize == 0.0 or not self.niter % self.opt.g_reg_every == 0:
-            self.loss_weighted_path_A = 0
-            self.loss_weighted_path_B = 0
+            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
+            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
             compute_g_regularize = False
 
         #A
@@ -579,7 +579,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_weighted_path_B = 0.0
                     
 
-        self.loss_G += lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)  + self.loss_weighted_path_A + self.loss_weighted_path_B
+        self.loss_G += self.opt.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)  + self.loss_weighted_path_A + self.loss_weighted_path_B
         
         self.loss_G.backward(retain_graph=True)
 
@@ -619,8 +619,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
             self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
 
-        self.loss_d_dec = self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
-
+        self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
+        
         self.loss_d_dec.backward()
 
     def optimize_parameters(self):
