@@ -126,6 +126,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=Tru
 
 
 def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=True, wskip=False, init_weight=True, img_size=128):
+
     """Create a generator
 
     Parameters:
