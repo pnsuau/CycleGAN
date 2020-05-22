@@ -32,8 +32,10 @@ class BaseModel(ABC):
         self.opt = opt
         self.gpu_ids = opt.gpu_ids
         self.isTrain = opt.isTrain
-        self.disc_in_mask = opt.disc_in_mask
-        self.fs_light = opt.fs_light
+        if hasattr(opt, 'disc_in_mask'):
+            self.disc_in_mask = opt.disc_in_mask
+        if hasattr(opt,'fs_light'):
+            self.fs_light = opt.fs_light
         self.device = torch.device('cuda:{}'.format(self.gpu_ids[0])) if self.gpu_ids else torch.device('cpu')  # get device name: CPU or GPU
         self.save_dir = os.path.join(opt.checkpoints_dir, opt.name)  # save all the checkpoints to save_dir
         if opt.preprocess != 'scale_width':  # with [scale_width], input images might have different sizes, which hurts the performance of cudnn.benchmark.
@@ -194,11 +196,16 @@ class BaseModel(ABC):
                 state_dict = torch.load(load_path, map_location=str(self.device))
                 if hasattr(state_dict, '_metadata'):
                     del state_dict._metadata
-
+                    
                 # patch InstanceNorm checkpoints prior to 0.4
                 for key in list(state_dict.keys()):  # need to copy keys here because we mutate in loop
                     self.__patch_instance_norm_state_dict(state_dict, net, key.split('.'))
-                net.load_state_dict(state_dict)
+
+                
+                if hasattr(state_dict, 'g_ema'):
+                    net.load_state_dict(state_dict['g_ema'])
+                else:
+                    net.load_state_dict(state_dict)
 
     def print_networks(self, verbose):
         """Print the total number of parameters in the network and (if verbose) network architecture
