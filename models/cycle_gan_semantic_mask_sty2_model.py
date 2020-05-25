@@ -316,11 +316,11 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         d = 1
         
-        self.netDecoderG_A.eval()
+        #self.netDecoderG_A.eval()
         self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,return_latents=True)
         
         if self.isTrain:
-            self.netDecoderG_B.eval()
+            #self.netDecoderG_B.eval()
             if self.rec_noise:
                 self.fake_B_noisy1 = self.gaussian(self.fake_B)
                 self.z_rec_A= self.netG_B(self.fake_B_noisy1)
@@ -531,8 +531,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         compute_g_regularize = True
         if self.opt.path_regularize == 0.0 or not self.niter % self.opt.g_reg_every == 0:
-            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
-            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
+            self.loss_weighted_path_A = 0#* self.loss_weighted_path_A
+            self.loss_weighted_path_B = 0#* self.loss_weighted_path_B
             compute_g_regularize = False
 
         #A
@@ -579,7 +579,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         self.loss_G += self.opt.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)  + self.loss_weighted_path_A + self.loss_weighted_path_B
         
-        self.loss_G.backward(retain_graph=True)
+        self.loss_G.backward()
 
     def backward_discriminator_decoder(self):
         real_pred_A = self.netDiscriminatorDecoderG_A(self.real_A)
