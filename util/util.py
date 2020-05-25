@@ -75,7 +75,7 @@ def tensor2im(input_image, imtype=np.uint8):
         if image_numpy.shape[0] == 1:  # grayscale to RGB
             image_numpy = np.tile(image_numpy, (3, 1, 1))
         if len(image_numpy.shape)!=2: # it is an image
-            image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-processing: tranpose and scaling
+            image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-processing: transpose and scaling
         else : # it is  a mask
             image_numpy = image_numpy.astype(np.uint8)
             image_numpy = display_mask(image_numpy)
