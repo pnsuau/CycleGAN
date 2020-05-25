@@ -9,6 +9,7 @@ from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
 import os
+from models.vgg_perceptual_loss import VGGPerceptualLoss
 #import kornia.augmentation
 #import sys
 
@@ -72,6 +73,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--no_init_weigth_dec_sty2', action='store_true')
             parser.add_argument('--no_init_weigth_G', action='store_true')
             parser.add_argument('--load_weigth_decoder', action='store_true')
+            parser.add_argument('--percept_loss', action='store_true', help='whether to use perceptual loss for reconstruction and identity')
     
         return parser
     
@@ -248,8 +250,13 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             else:
                 target_real_label = 1.0
             self.criterionGAN = networks.GANLoss(opt.gan_mode,target_real_label=target_real_label).to(self.device)
-            self.criterionCycle = torch.nn.L1Loss()
-            self.criterionIdt = torch.nn.L1Loss()
+            if opt.percept_loss:
+                self.criterionCycle = VGGPerceptualLoss().cuda()
+                self.criterionIdt = VGGPerceptualLoss().cuda()
+            else:
+                self.criterionCycle = torch.nn.L1Loss()
+                self.criterionIdt = torch.nn.L1Loss()
+
             self.criterionf_s = torch.nn.modules.CrossEntropyLoss()
             if opt.out_mask:
                 if opt.loss_out_mask == 'L1':
