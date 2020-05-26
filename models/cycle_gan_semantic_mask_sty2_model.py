@@ -63,8 +63,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--wskip', action='store_true', help='whether to use skip connections to latent wplus heads')
             parser.add_argument('--truncation',type=float,default=1,help='whether to use truncation trick (< 1)')
             parser.add_argument('--decoder_size', type=int, default=512)
-            parser.add_argument('--d_reg_every', type=int, default=16)
-            parser.add_argument('--g_reg_every', type=int, default=4)
+            parser.add_argument('--d_reg_every', type=int, default=16,help='regularize discriminator each x iterations, no reg if set to 0')
+            parser.add_argument('--g_reg_every', type=int, default=4,help='regularize decider sty2 each x iterations, no reg if set to 0')
             parser.add_argument('--r1', type=float, default=10)
             parser.add_argument('--mixing', type=float, default=0.9)
             parser.add_argument('--path_batch_shrink', type=int, default=2)
@@ -93,9 +93,18 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                    'cycle_B', 'idt_B', 
                    'sem_AB', 'sem_BA', 'f_s']
 
-        losses += ['g_nonsaturating_A','g_nonsaturating_B','weighted_path_A','weighted_path_B','d_dec_A','d_dec_B','d_dec_reg_A', 'd_dec_reg_B']
-                  
+        losses += ['g_nonsaturating_A','g_nonsaturating_B']
+
+        if self.opt.g_reg_every != 0:
+            losses +=['weighted_path_A','weighted_path_B']
+
+        losses+= ['d_dec_A','d_dec_B']
+
+        if self.opt.d_reg_every != 0:
+            losses += ['grad_pen_A','grad_pen_B']#,'d_dec_reg_A', 'd_dec_reg_B']
+        
         self.loss_names = losses
+
         self.truncation = opt.truncation
         
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
@@ -541,11 +550,11 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
 
         compute_g_regularize = True
-        if self.opt.path_regularize == 0.0 or not self.niter % self.opt.g_reg_every == 0:
-            self.loss_weighted_path_A = 0#* self.loss_weighted_path_A
-            self.loss_weighted_path_B = 0#* self.loss_weighted_path_B
+        if self.opt.path_regularize == 0.0 or not self.niter % self.opt.g_reg_every == 0 or self.opt.g_reg_every == 0 :
+            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
+            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
             compute_g_regularize = False
-
+        
         #A
         self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_A)
         self.loss_g_nonsaturating_A = self.g_nonsaturating_loss(self.fake_pred_g_loss_A)
@@ -586,7 +595,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             )
         else:
             self.loss_weighted_path_B = 0.0
-                    
 
         self.loss_G += self.opt.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)  + self.loss_weighted_path_A + self.loss_weighted_path_B
         
@@ -610,28 +618,39 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         #print(self.d_loss)
         #print(self.d_loss.shape)
 
-        
-        self.real_A.requires_grad = True
-        real_pred_A_2 = self.netDiscriminatorDecoderG_A(self.real_A)
-        r1_loss_A = self.d_r1_loss(real_pred_A_2, self.real_A)
-        
-        self.loss_d_dec_reg_A=(self.opt.r1 / 2 * r1_loss_A * self.opt.d_reg_every + 0 * real_pred_A[0])
+        #self.real_A.requires_grad = True
+        #real_pred_A_2 = self.netDiscriminatorDecoderG_A(self.real_A)
+        cur_real_A = self.real_A_pool.query(self.real_A)
+        cur_real_A.requires_grad = True
+        real_pred_A_2 = self.netDiscriminatorDecoderG_A(cur_real_A)
+        #r1_loss_A = self.d_r1_loss(real_pred_A_2, cur_real_A)
 
-        self.real_B.requires_grad = True
-        real_pred_B_2 = self.netDiscriminatorDecoderG_B(self.real_B)
-        r1_loss_B = self.d_r1_loss(real_pred_B_2, self.real_B)
-        
-        self.loss_d_dec_reg_B=(self.opt.r1 / 2 * r1_loss_B * self.opt.d_reg_every + 0 * real_pred_B[0])
+        self.loss_grad_pen_A = self.gradient_penalty(cur_real_A,real_pred_A_2)
+
+        #self.loss_d_dec_reg_A=self.opt.r1 / 2 * r1_loss_A * self.opt.d_reg_every * temp
+
+        #self.real_B.requires_grad = True
+        #real_pred_B_2 = self.netDiscriminatorDecoderG_B(self.real_B)
+        cur_real_B = self.real_B_pool.query(self.real_B)
+        cur_real_B.requires_grad = True
+        real_pred_B_2 = self.netDiscriminatorDecoderG_B(cur_real_B)
+        #r1_loss_B = self.d_r1_loss(real_pred_B_2, cur_real_B)
+
+        self.loss_grad_pen_B = self.gradient_penalty(cur_real_B,real_pred_B_2)
+
+        #self.loss_d_dec_reg_B=self.opt.r1 / 2 * r1_loss_B * self.opt.d_reg_every * temp
+
+        if not self.niter %self.opt.d_reg_every == 0 and self.opt.d_reg_every != 0:
+            #self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
+            #self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
+
+            self.loss_grad_pen_A = 0 * self.loss_grad_pen_A
+            self.loss_grad_pen_B = 0 * self.loss_grad_pen_B
 
 
-        if not self.niter %self.opt.d_reg_every == 0:
-            #print('no reg')
-            self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
-            self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
-        #else:
-            #print('reg')
+            #self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
+            self.loss_d_dec += self.loss_grad_pen_A + self.loss_grad_pen_B
 
-        self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
         self.loss_d_dec.backward()
 
     def optimize_parameters(self):
@@ -793,5 +812,11 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         return dist.get_world_size()
 
+    def gradient_penalty(self,images, output, weight = 10):
+        batch_size = images.shape[0]
+        gradients = torch.autograd.grad(outputs=output, inputs=images,
+                               grad_outputs=torch.ones(output.size()).cuda(),
+                               create_graph=True, retain_graph=True, only_inputs=True)[0]
 
-
+        gradients = gradients.view(batch_size, -1)
+        return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
