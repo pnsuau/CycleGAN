@@ -550,9 +550,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
 
         compute_g_regularize = True
-        if self.opt.path_regularize == 0.0 or not self.niter % self.opt.g_reg_every == 0 or self.opt.g_reg_every == 0 :
-            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
-            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
+        if self.opt.path_regularize == 0.0 or self.opt.g_reg_every == 0 or not self.niter % self.opt.g_reg_every == 0 :
+            #self.loss_weighted_path_A = 0* self.loss_weighted_path_A
+            #self.loss_weighted_path_B = 0* self.loss_weighted_path_B
             compute_g_regularize = False
         
         #A
@@ -573,7 +573,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.reduce_sum(self.mean_path_length_A).item() / self.get_world_size()
             )
         else:
-            self.loss_weighted_path_A = 0.0
+            self.loss_weighted_path_A = 0#*self.loss_weighted_path_A
 
         #B
         self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_B)
@@ -594,9 +594,12 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.reduce_sum(self.mean_path_length_B).item() / self.get_world_size()
             )
         else:
-            self.loss_weighted_path_B = 0.0
+            self.loss_weighted_path_B = 0#*self.loss_weighted_path_B
 
-        self.loss_G += self.opt.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)  + self.loss_weighted_path_A + self.loss_weighted_path_B
+        self.loss_G += self.opt.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)
+
+        if not self.opt.path_regularize == 0.0 and not self.opt.g_reg_every == 0 and self.niter % self.opt.g_reg_every == 0 :
+            self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
         
         self.loss_G.backward()
 
@@ -617,36 +620,38 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.loss_d_dec = self.loss_d_dec_A + self.loss_d_dec_B
         #print(self.d_loss)
         #print(self.d_loss.shape)
+        
+        if self.opt.d_reg_every != 0:
+            if self.niter %self.opt.d_reg_every == 0:
+                temp = real_pred_A/real_pred_A.detach()
+        
+                #self.real_A.requires_grad = True
+                #real_pred_A_2 = self.netDiscriminatorDecoderG_A(self.real_A)
+                cur_real_A = self.real_A_pool.query(self.real_A)
+                cur_real_A.requires_grad = True
+                real_pred_A_2 = self.netDiscriminatorDecoderG_A(cur_real_A)
+                #r1_loss_A = self.d_r1_loss(real_pred_A_2, cur_real_A)
 
-        #self.real_A.requires_grad = True
-        #real_pred_A_2 = self.netDiscriminatorDecoderG_A(self.real_A)
-        cur_real_A = self.real_A_pool.query(self.real_A)
-        cur_real_A.requires_grad = True
-        real_pred_A_2 = self.netDiscriminatorDecoderG_A(cur_real_A)
-        #r1_loss_A = self.d_r1_loss(real_pred_A_2, cur_real_A)
-
-        self.loss_grad_pen_A = self.gradient_penalty(cur_real_A,real_pred_A_2)
-
-        #self.loss_d_dec_reg_A=self.opt.r1 / 2 * r1_loss_A * self.opt.d_reg_every * temp
-
-        #self.real_B.requires_grad = True
-        #real_pred_B_2 = self.netDiscriminatorDecoderG_B(self.real_B)
-        cur_real_B = self.real_B_pool.query(self.real_B)
-        cur_real_B.requires_grad = True
-        real_pred_B_2 = self.netDiscriminatorDecoderG_B(cur_real_B)
-        #r1_loss_B = self.d_r1_loss(real_pred_B_2, cur_real_B)
-
-        self.loss_grad_pen_B = self.gradient_penalty(cur_real_B,real_pred_B_2)
-
-        #self.loss_d_dec_reg_B=self.opt.r1 / 2 * r1_loss_B * self.opt.d_reg_every * temp
-
-        if not self.niter %self.opt.d_reg_every == 0 and self.opt.d_reg_every != 0:
-            #self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
-            #self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
-
-            self.loss_grad_pen_A = 0 * self.loss_grad_pen_A
-            self.loss_grad_pen_B = 0 * self.loss_grad_pen_B
-
+                self.loss_grad_pen_A = self.gradient_penalty(cur_real_A,real_pred_A_2)
+                
+                #self.loss_d_dec_reg_A=self.opt.r1 / 2 * r1_loss_A * self.opt.d_reg_every * temp
+                
+                #self.real_B.requires_grad = True
+                #real_pred_B_2 = self.netDiscriminatorDecoderG_B(self.real_B)
+                cur_real_B = self.real_B_pool.query(self.real_B)
+                cur_real_B.requires_grad = True
+                real_pred_B_2 = self.netDiscriminatorDecoderG_B(cur_real_B)
+                #r1_loss_B = self.d_r1_loss(real_pred_B_2, cur_real_B)
+            
+                self.loss_grad_pen_B = self.gradient_penalty(cur_real_B,real_pred_B_2)
+                
+                #self.loss_d_dec_reg_B=self.opt.r1 / 2 * r1_loss_B * self.opt.d_reg_every * temp
+        
+                #self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
+                #self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
+            else:
+                self.loss_grad_pen_A = 0 * self.loss_grad_pen_A
+                self.loss_grad_pen_B = 0 * self.loss_grad_pen_B
 
             #self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
             self.loss_d_dec += self.loss_grad_pen_A + self.loss_grad_pen_B
