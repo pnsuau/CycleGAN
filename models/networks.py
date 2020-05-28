@@ -452,7 +452,7 @@ class ResnetGenerator(nn.Module):
                 n_feat = 1024 # 256 with mpool
                 n_feat = 2**(2*int(math.log(img_size,2)-2))
                 self.n_wplus = (2*int(math.log(img_size,2)-1))
-                self.wblocks = []
+                self.wblocks = nn.ModuleList()
                 for n in range(0,self.n_wplus):
                     self.wblocks += [WBlock(ngf*mult,n_feat,init_type,init_gain,gpu_ids)]
                 
