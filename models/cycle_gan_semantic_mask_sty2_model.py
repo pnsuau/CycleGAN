@@ -252,7 +252,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.criterionGAN = networks.GANLoss(opt.gan_mode,target_real_label=target_real_label).to(self.device)
             if opt.percept_loss:
                 self.criterionCycle = VGGPerceptualLoss().cuda()
+                self.criterionCycle2 = torch.nn.MSELoss()
                 self.criterionIdt = VGGPerceptualLoss().cuda()
+                self.criterionIdt2 = torch.nn.MSELoss()
             else:
                 self.criterionCycle = torch.nn.L1Loss()
                 self.criterionIdt = torch.nn.L1Loss()
@@ -481,11 +483,13 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.z_idt_A = self.netG_A(self.real_B)
             self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False)[0]
             
-            self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
+            self.loss_idt_A = (self.criterionIdt(self.idt_A, self.real_B)
+                               + self.criterionIdt2(self.idt_A, self.real_B)) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed.
             self.z_idt_B = self.netG_B(self.real_A)
             self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False)[0]
-            self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
+            self.loss_idt_B = (self.criterionIdt(self.idt_B, self.real_A)
+                               + self.criterionIdt2(self.idt_B, self.real_A)) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0
@@ -505,9 +509,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             # GAN loss D_B(G_B(B))
             #self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss
-        self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
+        self.loss_cycle_A = (self.criterionCycle(self.rec_A, self.real_A) + self.criterionCycle2(self.rec_A, self.real_A)) * lambda_A
         # Backward cycle loss
-        self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+        self.loss_cycle_B = (self.criterionCycle(self.rec_B, self.real_B) + self.criterionCycle2(self.rec_B, self.real_B)) * lambda_B
         # combined loss standard cyclegan
         self.loss_G = self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B #self.loss_G_A + self.loss_G_B + 
         if self.disc_in_mask:
