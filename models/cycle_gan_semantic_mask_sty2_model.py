@@ -249,6 +249,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 assert(opt.input_nc == opt.output_nc)
             self.fake_A_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             self.fake_B_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
+            self.real_A_pool = ImagePool(opt.pool_size)
+            self.real_B_pool = ImagePool(opt.pool_size)
+            
             if opt.disc_in_mask:
                 self.fake_A_pool_mask = ImagePool(opt.pool_size)
                 self.fake_B_pool_mask = ImagePool(opt.pool_size)
