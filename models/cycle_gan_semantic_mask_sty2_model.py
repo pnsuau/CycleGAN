@@ -650,8 +650,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 #self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
                 #self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
             else:
-                self.loss_grad_pen_A = 0 * self.loss_grad_pen_A
-                self.loss_grad_pen_B = 0 * self.loss_grad_pen_B
+                self.loss_grad_pen_A = 0# * self.loss_grad_pen_A
+                self.loss_grad_pen_B = 0# * self.loss_grad_pen_B
 
             #self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
             self.loss_d_dec += self.loss_grad_pen_A + self.loss_grad_pen_B
