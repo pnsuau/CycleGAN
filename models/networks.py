@@ -465,12 +465,10 @@ class ResnetGenerator(nn.Module):
         else:
             res_outputs = []
             output_head = self.head(input)
-            #print('bpoints size=',len(self.bpoints))
             output = output_head
             for bp in self.bpoints:
                 output = (bp(output))
                 res_outputs.append(output)
-            #print('res_outputs size=',len(res_outputs))
             #sys.exit()
             
         if hasattr(self,'to_z'):
@@ -496,6 +494,7 @@ class ResnetGenerator(nn.Module):
             else:
                 nou = 0
                 for o in res_outputs: # skip connections to latent heads
+                    #print('o',o.shape)
                     outputs.append(self.wblocks[nou](o))
                     nou += 1
                 for k in range(0,self.n_wplus-nou): # remaining latent heads
@@ -510,7 +509,7 @@ class ResnetGenerator(nn.Module):
         
 class ResnetGenerator_attn(nn.Module):
     # initializers
-    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False):
+    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
         super(ResnetGenerator_attn, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
@@ -543,6 +542,15 @@ class ResnetGenerator_attn(nn.Module):
         self.deconv3_attention = nn.Conv2d(ngf, 10, 1, 1, 0)
         
         self.tanh = torch.nn.Tanh()
+
+        n_feat = 16384
+        
+        self.n_wplus = 12#(2*int(math.log(img_size,2)-1))
+        self.wblocks = nn.ModuleList()
+        dim=3
+        for n in range(0,self.n_wplus):
+            self.wblocks += [WBlock(dim,n_feat,init_type,init_gain,gpu_ids)]
+                
 
     # weight_init
     def weight_init(self, mean, std):
@@ -617,9 +625,32 @@ class ResnetGenerator_attn(nn.Module):
         # output10 = image10 * attention10
         output10 = input * attention10
 
-        o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
+        res_outputs = []
+        res_outputs.append(output1)
+        res_outputs.append(output1)
+        res_outputs.append(output1)
+        res_outputs.append(output2)
+        res_outputs.append(output3)
+        res_outputs.append(output4)
+        res_outputs.append(output5)
+        res_outputs.append(output6)
+        res_outputs.append(output7)
+        res_outputs.append(output8)
+        res_outputs.append(output8)
+        res_outputs.append(output10)
+        
+        
+        outputs=[]
+        nou = 0
+        for o in res_outputs: # skip connections to latent heads
+            outputs.append(self.wblocks[self.n_wplus-nou-1](o))
+            outputs.reverse()
+            nou += 1
+        for k in range(0,self.n_wplus-nou): # remaining latent heads
+            outputs.append(self.wblocks[nou+k](output1))    
 
-        return o#, output1, output2, output3, output4, output5, output6, output7, output8, output9, output10, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
+        o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
+        return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, output10#, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
     
 class resnet_block_attn(nn.Module):
     def __init__(self, channel, kernel, stride, padding):
