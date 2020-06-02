@@ -580,7 +580,7 @@ class ResnetGenerator_attn(nn.Module):
         image7 = image[:, 18:21, :, :]
         image8 = image[:, 21:24, :, :]
         image9 = image[:, 24:27, :, :]
-        # image10 = image[:, 27:30, :, :]
+        #image10 = image[:, 27:30, :, :]
 
         x_attention = F.relu(self.deconv1_norm_attention(self.deconv1_attention(x)))
         x_attention = F.relu(self.deconv2_norm_attention(self.deconv2_attention(x_attention)))
@@ -614,7 +614,7 @@ class ResnetGenerator_attn(nn.Module):
         attention9 = attention9_.repeat(1, 3, 1, 1)
         attention10 = attention10_.repeat(1, 3, 1, 1)
 
-        output1 = image1 * attention1
+        #output1 = image1 * attention1
         output2 = image2 * attention2
         output3 = image3 * attention3
         output4 = image4 * attention4
@@ -623,8 +623,8 @@ class ResnetGenerator_attn(nn.Module):
         output7 = image7 * attention7
         output8 = image8 * attention8
         output9 = image9 * attention9
-        # output10 = image10 * attention10
-        output10 = input * attention10
+        output10 = image1 * attention10 #IMAGE 1 USED NOT IMAGE 10
+        output1 = input * attention1
 
         res_outputs = []
         res_outputs.append(output1)
@@ -637,19 +637,16 @@ class ResnetGenerator_attn(nn.Module):
         res_outputs.append(output6)
         res_outputs.append(output7)
         res_outputs.append(output8)
-        res_outputs.append(output8)
+        res_outputs.append(output9)
         res_outputs.append(output10)
         
         
         outputs=[]
         nou = 0
         for o in res_outputs: # skip connections to latent heads
-            outputs.append(self.wblocks[self.n_wplus-nou-1](o))
-            outputs.reverse()
+            outputs.append(self.wblocks[nou](o))
             nou += 1
-        for k in range(0,self.n_wplus-nou): # remaining latent heads
-            outputs.append(self.wblocks[nou+k](output1))    
-
+        
         o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
         return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, output10#, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
     
