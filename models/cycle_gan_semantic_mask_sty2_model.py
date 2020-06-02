@@ -102,7 +102,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if self.opt.d_reg_every != 0:
             losses += ['grad_pen_A','grad_pen_B']#,'d_dec_reg_A', 'd_dec_reg_B']
-        
+            
         self.loss_names = losses
 
         self.truncation = opt.truncation
@@ -131,11 +131,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         visual_names_mask_in = ['real_B_mask','fake_B_mask','real_A_mask','fake_A_mask',
                                 'real_B_mask_in','fake_B_mask_in','real_A_mask_in','fake_A_mask_in']
         
-        self.visual_names = visual_names_A + visual_names_B + visual_names_seg_A + visual_names_seg_B
+        output_attn_B= ['output1_fake_B','output2_fake_B','output3_fake_B','output4_fake_B','output5_fake_B','output6_fake_B','output7_fake_B','output8_fake_B','output9_fake_B','output10_fake_B']
+        output_attn_A= ['output1_fake_A','output2_fake_A','output3_fake_A','output4_fake_A','output5_fake_A','output6_fake_A','output7_fake_A','output8_fake_A','output9_fake_A','output10_fake_A']
 
-        output_attn= ['output1_fake_B','output2_fake_B','output3_fake_B','output4_fake_B','output5_fake_B','output6_fake_B','output7_fake_B','output8_fake_B','output9_fake_B','output10_fake_B']
-
-        self.visual_names += output_attn
+        self.visual_names = visual_names_A + output_attn_B + visual_names_seg_A + visual_names_B + visual_names_seg_B + output_attn_A
 
         if opt.out_mask :
             self.visual_names += visual_names_out_mask
@@ -283,7 +282,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                     self.criterionMask = torch.nn.MSELoss()
                 elif opt.loss_out_mask == 'Charbonnier':
                     self.criterionMask = L1_Charbonnier_loss(opt.charbonnier_eps)
-                    
+            
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -685,7 +684,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if not self.opt.path_regularize == 0.0 and not self.opt.g_reg_every == 0 and self.niter % self.opt.g_reg_every == 0 :
             self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
-        
+
         self.loss_G.backward()
 
     def backward_discriminator_decoder(self):
