@@ -74,6 +74,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--no_init_weigth_G', action='store_true')
             parser.add_argument('--load_weigth_decoder', action='store_true')
             parser.add_argument('--percept_loss', action='store_true', help='whether to use perceptual loss for reconstruction and identity')
+            parser.add_argument('--loss_context', action='store_true')
+            parser.add_argument('--loss_content', action='store_true')
+            parser.add_argument('--lambda_w_context', type=float, default=10.0, help='weight w context loss')
+            parser.add_argument('--lambda_w_content', type=float, default=10.0, help='weight w content loss')
     
         return parser
     
@@ -102,7 +106,12 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if self.opt.d_reg_every != 0:
             losses += ['grad_pen_A','grad_pen_B']#,'d_dec_reg_A', 'd_dec_reg_B']
-            
+
+        if self.opt.loss_context:
+            losses += ['wcontext_fake_A_rec_B', 'wcontext_fake_A_idt_A', 'wcontext_fake_B_rec_A', 'wcontext_fake_B_idt_B']
+        if self.opt.loss_content:
+            losses += ['wcontent_rec_B_idt_A','wcontent_rec_A_idt_B']
+        
         self.loss_names = losses
 
         self.truncation = opt.truncation
@@ -282,7 +291,12 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                     self.criterionMask = torch.nn.MSELoss()
                 elif opt.loss_out_mask == 'Charbonnier':
                     self.criterionMask = L1_Charbonnier_loss(opt.charbonnier_eps)
-            
+
+            if self.opt.loss_context:
+                self.criterionWContext = torch.nn.MSELoss()
+            if self.opt.loss_content:
+                self.criterionWContent = torch.nn.MSELoss()
+                    
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -685,6 +699,22 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         if not self.opt.path_regularize == 0.0 and not self.opt.g_reg_every == 0 and self.niter % self.opt.g_reg_every == 0 :
             self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
 
+        if hasattr(self,'criterionWContext'):
+            self.loss_wcontext_fake_A_rec_B=self.criterionWContext(torch.cat(self.z_fake_A)[0],torch.cat(self.z_rec_B)[0]) * self.opt.lambda_w_context
+            self.loss_wcontext_fake_A_idt_A=self.criterionWContext(torch.cat(self.z_fake_A)[0],torch.cat(self.z_idt_A)[0]) * self.opt.lambda_w_context
+
+            self.loss_wcontext_fake_B_rec_A=self.criterionWContext(torch.cat(self.z_fake_B)[0],torch.cat(self.z_rec_A)[0]) * self.opt.lambda_w_context
+            self.loss_wcontext_fake_B_idt_B=self.criterionWContext(torch.cat(self.z_fake_B)[0],torch.cat(self.z_idt_B)[0]) * self.opt.lambda_w_context
+
+            self.loss_G += self.loss_wcontext_fake_A_rec_B + self.loss_wcontext_fake_A_idt_A + self.loss_wcontext_fake_B_rec_A + self.loss_wcontext_fake_B_idt_B
+
+        if hasattr(self,'criterionWContent'):
+            self.loss_wcontent_rec_A_idt_B=self.criterionWContent(torch.cat(self.z_rec_A)[3:12],torch.cat(self.z_idt_B)[3:12]) * self.opt.lambda_w_context
+
+            self.loss_wcontent_rec_B_idt_A=self.criterionWContent(torch.cat(self.z_rec_B)[3:12],torch.cat(self.z_idt_A)[3:12]) * self.opt.lambda_w_context
+
+            self.loss_G += self.loss_wcontent_rec_B_idt_A + self.loss_wcontent_rec_A_idt_B
+            
         self.loss_G.backward()
 
     def backward_discriminator_decoder(self):
