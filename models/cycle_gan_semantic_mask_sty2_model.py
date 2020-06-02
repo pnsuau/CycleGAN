@@ -273,7 +273,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             else:
                 self.criterionCycle = torch.nn.L1Loss()
                 self.criterionIdt = torch.nn.L1Loss()
-
+            
             self.criterionf_s = torch.nn.modules.CrossEntropyLoss()
             if opt.out_mask:
                 if opt.loss_out_mask == 'L1':
@@ -336,19 +336,19 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
 
     def forward(self):
-        temp_fake_B= self.netG_A(self.real_A)
-        self.z_fake_B = temp_fake_B[0]
+        temp_z_fake_B= self.netG_A(self.real_A)
+        self.z_fake_B = temp_z_fake_B[0]
 
-        self.output1_fake_B= temp_fake_B[1]
-        self.output2_fake_B= temp_fake_B[2]
-        self.output3_fake_B= temp_fake_B[3]
-        self.output4_fake_B= temp_fake_B[4]
-        self.output5_fake_B= temp_fake_B[5]
-        self.output6_fake_B= temp_fake_B[6]
-        self.output7_fake_B= temp_fake_B[7]
-        self.output8_fake_B= temp_fake_B[8]
-        self.output9_fake_B= temp_fake_B[9]
-        self.output10_fake_B= temp_fake_B[10]
+        self.output1_fake_B= temp_z_fake_B[1]
+        self.output2_fake_B= temp_z_fake_B[2]
+        self.output3_fake_B= temp_z_fake_B[3]
+        self.output4_fake_B= temp_z_fake_B[4]
+        self.output5_fake_B= temp_z_fake_B[5]
+        self.output6_fake_B= temp_z_fake_B[6]
+        self.output7_fake_B= temp_z_fake_B[7]
+        self.output8_fake_B= temp_z_fake_B[8]
+        self.output9_fake_B= temp_z_fake_B[9]
+        self.output10_fake_B= temp_z_fake_B[10]
         
         d = 1
         
@@ -359,23 +359,63 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             #self.netDecoderG_B.eval()
             if self.rec_noise:
                 self.fake_B_noisy1 = self.gaussian(self.fake_B)
-                self.z_rec_A= self.netG_B(self.fake_B_noisy1)[0]
+                temp_z_rec_A= self.netG_B(self.fake_B_noisy1)
             else:
-                self.z_rec_A = self.netG_B(self.fake_B)[0]
+                temp_z_rec_A = self.netG_B(self.fake_B)
+
+            self.z_rec_A = temp_z_rec_A[0]
+            self.output1_rec_A= temp_z_rec_A[1]
+            self.output2_rec_A= temp_z_rec_A[2]
+            self.output3_rec_A= temp_z_rec_A[3]
+            self.output4_rec_A= temp_z_rec_A[4]
+            self.output5_rec_A= temp_z_rec_A[5]
+            self.output6_rec_A= temp_z_rec_A[6]
+            self.output7_rec_A= temp_z_rec_A[7]
+            self.output8_rec_A= temp_z_rec_A[8]
+            self.output9_rec_A= temp_z_rec_A[9]
+            self.output10_rec_A= temp_z_rec_A[10]
+            
+            
             self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False)[0]
-                
-            self.z_fake_A = self.netG_B(self.real_B)[0]
+
+            
+            temp_z_fake_A= self.netG_B(self.real_B)
+            
+            self.z_fake_A = temp_z_fake_A[0]
+            self.output1_fake_A= temp_z_fake_A[1]
+            self.output2_fake_A= temp_z_fake_A[2]
+            self.output3_fake_A= temp_z_fake_A[3]
+            self.output4_fake_A= temp_z_fake_A[4]
+            self.output5_fake_A= temp_z_fake_A[5]
+            self.output6_fake_A= temp_z_fake_A[6]
+            self.output7_fake_A= temp_z_fake_A[7]
+            self.output8_fake_A= temp_z_fake_A[8]
+            self.output9_fake_A= temp_z_fake_A[9]
+            self.output10_fake_A= temp_z_fake_A[10]
+            
             self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True)
             
             if self.rec_noise:
                 self.fake_A_noisy1 = self.gaussian(self.fake_A)
-                self.z_rec_B = self.netG_A(self.fake_A_noisy1)[0]
+                temp_z_rec_B= self.netG_A(self.fake_A_noisy1)
             else:
-                self.z_rec_B = self.netG_A(self.fake_A)[0]
+                temp_z_rec_B = self.netG_A(self.fake_A)
+
+            self.z_rec_B = temp_z_rec_B[0]
+            self.output1_rec_B= temp_z_rec_B[1]
+            self.output2_rec_B= temp_z_rec_B[2]
+            self.output3_rec_B= temp_z_rec_B[3]
+            self.output4_rec_B= temp_z_rec_B[4]
+            self.output5_rec_B= temp_z_rec_B[5]
+            self.output6_rec_B= temp_z_rec_B[6]
+            self.output7_rec_B= temp_z_rec_B[7]
+            self.output8_rec_B= temp_z_rec_B[8]
+            self.output9_rec_B= temp_z_rec_B[9]
+            self.output10_rec_B= temp_z_rec_B[10]
+                
             self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False)[0]
                 
-            self.pred_real_A = self.netf_s(self.real_A)
-           
+            self.pred_real_A = self.netf_s(self.real_A)           
             
             self.gt_pred_A = F.log_softmax(self.pred_real_A,dim= d).argmax(dim=d)
             
@@ -507,13 +547,39 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         # Identity loss
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed.
-            self.z_idt_A = self.netG_A(self.real_B)[0]
+            temp_z_idt_A = self.netG_A(self.real_B)
+
+            self.z_idt_A = temp_z_idt_A[0]
+            self.output1_idt_A= temp_z_idt_A[1]
+            self.output2_idt_A= temp_z_idt_A[2]
+            self.output3_idt_A= temp_z_idt_A[3]
+            self.output4_idt_A= temp_z_idt_A[4]
+            self.output5_idt_A= temp_z_idt_A[5]
+            self.output6_idt_A= temp_z_idt_A[6]
+            self.output7_idt_A= temp_z_idt_A[7]
+            self.output8_idt_A= temp_z_idt_A[8]
+            self.output9_idt_A= temp_z_idt_A[9]
+            self.output10_idt_A= temp_z_idt_A[10]
+
             self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False)[0]
             
             self.loss_idt_A = (self.criterionIdt(self.idt_A, self.real_B)
                                + self.criterionIdt2(self.idt_A, self.real_B)) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed.
-            self.z_idt_B = self.netG_B(self.real_A)[0]
+            temp_z_idt_B = self.netG_B(self.real_A)
+
+            self.z_idt_B = temp_z_idt_B[0]
+            self.output1_idt_B= temp_z_idt_B[1]
+            self.output2_idt_B= temp_z_idt_B[2]
+            self.output3_idt_B= temp_z_idt_B[3]
+            self.output4_idt_B= temp_z_idt_B[4]
+            self.output5_idt_B= temp_z_idt_B[5]
+            self.output6_idt_B= temp_z_idt_B[6]
+            self.output7_idt_B= temp_z_idt_B[7]
+            self.output8_idt_B= temp_z_idt_B[8]
+            self.output9_idt_B= temp_z_idt_B[9]
+            self.output10_idt_B= temp_z_idt_B[10]
+            
             self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False)[0]
             self.loss_idt_B = (self.criterionIdt(self.idt_B, self.real_A)
                                + self.criterionIdt2(self.idt_B, self.real_A)) * lambda_A * lambda_idt
