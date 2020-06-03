@@ -140,8 +140,12 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         visual_names_mask_in = ['real_B_mask','fake_B_mask','real_A_mask','fake_A_mask',
                                 'real_B_mask_in','fake_B_mask_in','real_A_mask_in','fake_A_mask_in']
         
-        output_attn_B= ['output1_fake_B','output2_fake_B','output3_fake_B','output4_fake_B','output5_fake_B','output6_fake_B','output7_fake_B','output8_fake_B','output9_fake_B','output10_fake_B']
-        output_attn_A= ['output1_fake_A','output2_fake_A','output3_fake_A','output4_fake_A','output5_fake_A','output6_fake_A','output7_fake_A','output8_fake_A','output9_fake_A','output10_fake_A']
+        output_attn_B= ['output1_fake_B','output2_fake_B','output3_fake_B','output4_fake_B','output5_fake_B','output6_fake_B','output7_fake_B','output8_fake_B','output9_fake_B','outputcontext_fake_B']
+        output_attn_A= ['output1_fake_A','output2_fake_A','output3_fake_A','output4_fake_A','output5_fake_A','output6_fake_A','output7_fake_A','output8_fake_A','output9_fake_A','outputcontext_fake_A']
+
+        output_attn_B = ['outputcontext_fake_B']
+        output_attn_A = ['outputcontext_fake_A']
+
 
         self.visual_names = visual_names_A + output_attn_B + visual_names_seg_A + visual_names_B + visual_names_seg_B + output_attn_A
 
@@ -322,7 +326,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.mean_path_length_A = 0
             self.mean_path_length_B = 0
             #if opt.D_noise:   
-                #self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
+               #self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
                 #                                   kornia.augmentation.RandomHorizontalFlip(p=0.5),
    
    #                                                kornia.color.AdjustBrightness(np.random.uniform(0.0,0.1)),
@@ -361,7 +365,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.output7_fake_B= temp_z_fake_B[7]
         self.output8_fake_B= temp_z_fake_B[8]
         self.output9_fake_B= temp_z_fake_B[9]
-        self.output10_fake_B= temp_z_fake_B[10]
+        self.outputcontext_fake_B= temp_z_fake_B[10]
         
         d = 1
         
@@ -386,7 +390,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.output7_rec_A= temp_z_rec_A[7]
             self.output8_rec_A= temp_z_rec_A[8]
             self.output9_rec_A= temp_z_rec_A[9]
-            self.output10_rec_A= temp_z_rec_A[10]
+            self.outputcontext_rec_A= temp_z_rec_A[10]
             
             
             self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False)[0]
@@ -404,7 +408,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.output7_fake_A= temp_z_fake_A[7]
             self.output8_fake_A= temp_z_fake_A[8]
             self.output9_fake_A= temp_z_fake_A[9]
-            self.output10_fake_A= temp_z_fake_A[10]
+            self.outputcontext_fake_A= temp_z_fake_A[10]
             
             self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True)
             
@@ -424,7 +428,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.output7_rec_B= temp_z_rec_B[7]
             self.output8_rec_B= temp_z_rec_B[8]
             self.output9_rec_B= temp_z_rec_B[9]
-            self.output10_rec_B= temp_z_rec_B[10]
+            self.outputcontext_rec_B= temp_z_rec_B[10]
                 
             self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False)[0]
                 
@@ -572,7 +576,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.output7_idt_A= temp_z_idt_A[7]
             self.output8_idt_A= temp_z_idt_A[8]
             self.output9_idt_A= temp_z_idt_A[9]
-            self.output10_idt_A= temp_z_idt_A[10]
+            self.outputcontext_idt_A= temp_z_idt_A[10]
 
             self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False)[0]
             
@@ -591,7 +595,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.output7_idt_B= temp_z_idt_B[7]
             self.output8_idt_B= temp_z_idt_B[8]
             self.output9_idt_B= temp_z_idt_B[9]
-            self.output10_idt_B= temp_z_idt_B[10]
+            self.outputcontext_idt_B= temp_z_idt_B[10]
             
             self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False)[0]
             self.loss_idt_B = (self.criterionIdt(self.idt_B, self.real_A)
@@ -700,11 +704,11 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
 
         if hasattr(self,'criterionWContext'):
-            self.loss_wcontext_fake_A_rec_B=self.criterionWContext(torch.cat(self.z_fake_A)[0],torch.cat(self.z_rec_B)[0]) * self.opt.lambda_w_context
-            self.loss_wcontext_fake_A_idt_A=self.criterionWContext(torch.cat(self.z_fake_A)[0],torch.cat(self.z_idt_A)[0]) * self.opt.lambda_w_context
+            self.loss_wcontext_fake_A_rec_B=self.criterionWContext(self.outputcontext_fake_A,self.outputcontext_rec_B) * self.opt.lambda_w_context
+            self.loss_wcontext_fake_A_idt_A=self.criterionWContext(self.outputcontext_fake_A,self.outputcontext_idt_A) * self.opt.lambda_w_context
 
-            self.loss_wcontext_fake_B_rec_A=self.criterionWContext(torch.cat(self.z_fake_B)[0],torch.cat(self.z_rec_A)[0]) * self.opt.lambda_w_context
-            self.loss_wcontext_fake_B_idt_B=self.criterionWContext(torch.cat(self.z_fake_B)[0],torch.cat(self.z_idt_B)[0]) * self.opt.lambda_w_context
+            self.loss_wcontext_fake_B_rec_A=self.criterionWContext(self.outputcontext_fake_B,self.outputcontext_rec_A) * self.opt.lambda_w_context
+            self.loss_wcontext_fake_B_idt_B=self.criterionWContext(self.outputcontext_fake_B,self.outputcontext_idt_B) * self.opt.lambda_w_context
 
             self.loss_G += self.loss_wcontext_fake_A_rec_B + self.loss_wcontext_fake_A_idt_A + self.loss_wcontext_fake_B_rec_A + self.loss_wcontext_fake_B_idt_B
 

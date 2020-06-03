@@ -631,23 +631,25 @@ class ResnetGenerator_attn(nn.Module):
         output7 = image7 * attention7
         output8 = image8 * attention8
         output9 = image9 * attention9
-        output10 = image10 * attention10
+        outputcontext = image10 * attention10
         #output1 = input * attention1
 
         res_outputs = []
         #print(self.conv_net(output1).shape)
-        res_outputs.append(self.conv_net(output1))
-        res_outputs.append(self.conv_net(output1))
-        res_outputs.append(self.conv_net(output1))
-        res_outputs.append(self.conv_net(output2))
-        res_outputs.append(self.conv_net(output3))
-        res_outputs.append(self.conv_net(output4))
-        res_outputs.append(self.conv_net(output5))
-        res_outputs.append(self.conv_net(output6))
-        res_outputs.append(self.conv_net(output7))
-        res_outputs.append(self.conv_net(output8))
-        res_outputs.append(self.conv_net(output9))
-        res_outputs.append(self.conv_net(output10))
+        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output2)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output3)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output4)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output5)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output6)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output7)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output8)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output9)+self.conv_net(outputcontext))
+
+        #res_outputs.append(self.conv_net(output10))
         
         outputs=[]
         nou = 0
@@ -655,8 +657,8 @@ class ResnetGenerator_attn(nn.Module):
             outputs.append(self.wblocks[nou](o))
             nou += 1
         
-        o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
-        return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, output10#, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
+            #o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
+        return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, outputcontext#, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
     
 class resnet_block_attn(nn.Module):
     def __init__(self, channel, kernel, stride, padding):
