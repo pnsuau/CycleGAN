@@ -533,7 +533,7 @@ class ResnetGenerator_attn(nn.Module):
         self.deconv1_norm_content = nn.InstanceNorm2d(ngf * 2)
         self.deconv2_content = spectral_norm(nn.ConvTranspose2d(ngf * 2, ngf, 3, 2, 1, 1),use_spectral)
         self.deconv2_norm_content = nn.InstanceNorm2d(ngf)
-        self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 27, 7, 1, 0),use_spectral)
+        self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 30, 7, 1, 0),use_spectral)#27 instead of 30
 
         self.deconv1_attention = spectral_norm(nn.ConvTranspose2d(ngf * 4, ngf * 2, 3, 2, 1, 1),use_spectral)
         self.deconv1_norm_attention = nn.InstanceNorm2d(ngf * 2)
@@ -543,14 +543,22 @@ class ResnetGenerator_attn(nn.Module):
         
         self.tanh = torch.nn.Tanh()
 
+        conv_net=[]
+        use_bias =True
+        conv_net.append(spectral_norm(nn.Conv2d(3, 1, kernel_size=3, padding=0, bias=use_bias),use_spectral))
+        conv_net.append(nn.ReLU(True))
+        conv_net.append(nn.MaxPool2d(3))
+        self.conv_net = nn.Sequential(*conv_net)
+        #init_net(nn.Sequential(*w_block), init_type, init_gain, gpu_ids)
+
         n_feat = 16384
+        n_feat = 1764
         
         self.n_wplus = 12#(2*int(math.log(img_size,2)-1))
         self.wblocks = nn.ModuleList()
         dim=3
         for n in range(0,self.n_wplus):
-            self.wblocks += [WBlock(dim,n_feat,init_type,init_gain,gpu_ids)]
-                
+            self.wblocks += [WBlock(1,n_feat,init_type,init_gain,gpu_ids)]
 
     # weight_init
     def weight_init(self, mean, std):
@@ -579,7 +587,7 @@ class ResnetGenerator_attn(nn.Module):
         image7 = image[:, 18:21, :, :]
         image8 = image[:, 21:24, :, :]
         image9 = image[:, 24:27, :, :]
-        #image10 = image[:, 27:30, :, :]
+        image10 = image[:, 27:30, :, :]
 
         x_attention = F.relu(self.deconv1_norm_attention(self.deconv1_attention(x)))
         x_attention = F.relu(self.deconv2_norm_attention(self.deconv2_attention(x_attention)))
@@ -613,7 +621,7 @@ class ResnetGenerator_attn(nn.Module):
         attention9 = attention9_.repeat(1, 3, 1, 1)
         attention10 = attention10_.repeat(1, 3, 1, 1)
 
-        #output1 = image1 * attention1
+        output1 = image1 * attention1
         output2 = image2 * attention2
         output3 = image3 * attention3
         output4 = image4 * attention4
@@ -622,23 +630,23 @@ class ResnetGenerator_attn(nn.Module):
         output7 = image7 * attention7
         output8 = image8 * attention8
         output9 = image9 * attention9
-        output10 = image1 * attention10 #IMAGE 1 USED NOT IMAGE 10
-        output1 = input * attention1
+        output10 = image10 * attention10
+        #output1 = input * attention1
 
         res_outputs = []
-        res_outputs.append(output1)
-        res_outputs.append(output1)
-        res_outputs.append(output1)
-        res_outputs.append(output2)
-        res_outputs.append(output3)
-        res_outputs.append(output4)
-        res_outputs.append(output5)
-        res_outputs.append(output6)
-        res_outputs.append(output7)
-        res_outputs.append(output8)
-        res_outputs.append(output9)
-        res_outputs.append(output10)
-        
+        #print(self.conv_net(output1).shape)
+        res_outputs.append(self.conv_net(output1))
+        res_outputs.append(self.conv_net(output1))
+        res_outputs.append(self.conv_net(output1))
+        res_outputs.append(self.conv_net(output2))
+        res_outputs.append(self.conv_net(output3))
+        res_outputs.append(self.conv_net(output4))
+        res_outputs.append(self.conv_net(output5))
+        res_outputs.append(self.conv_net(output6))
+        res_outputs.append(self.conv_net(output7))
+        res_outputs.append(self.conv_net(output8))
+        res_outputs.append(self.conv_net(output9))
+        res_outputs.append(self.conv_net(output10))
         
         outputs=[]
         nou = 0
