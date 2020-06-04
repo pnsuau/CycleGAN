@@ -125,7 +125,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=Tru
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=True, wskip=False, init_weight=True, img_size=128):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=True, wskip=False, init_weight=True, img_size=128,use_w_context=False):
 
     """Create a generator
 
@@ -168,7 +168,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'resnet_attn':
-        net = ResnetGenerator_attn(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral)
+        net = ResnetGenerator_attn(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral,use_w_context=False)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     #if len(gpu_ids) > 0:
@@ -510,12 +510,13 @@ class ResnetGenerator(nn.Module):
         
 class ResnetGenerator_attn(nn.Module):
     # initializers
-    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[],use_w_context=False):
         super(ResnetGenerator_attn, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
         self.nb = n_blocks
+        self.use_w_context=use_w_context
         self.conv1 = spectral_norm(nn.Conv2d(input_nc, ngf, 7, 1, 0),use_spectral)
         self.conv1_norm = nn.InstanceNorm2d(ngf)
         self.conv2 = spectral_norm(nn.Conv2d(ngf, ngf * 2, 3, 2, 1),use_spectral)
@@ -534,7 +535,10 @@ class ResnetGenerator_attn(nn.Module):
         self.deconv1_norm_content = nn.InstanceNorm2d(ngf * 2)
         self.deconv2_content = spectral_norm(nn.ConvTranspose2d(ngf * 2, ngf, 3, 2, 1, 1),use_spectral)
         self.deconv2_norm_content = nn.InstanceNorm2d(ngf)
+        #if self.use_w_context:
         self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 30, 7, 1, 0),use_spectral)#27 instead of 30
+        #else:
+        #self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 27, 7, 1, 0),use_spectral)#27 instead of 30
 
         self.deconv1_attention = spectral_norm(nn.ConvTranspose2d(ngf * 4, ngf * 2, 3, 2, 1, 1),use_spectral)
         self.deconv1_norm_attention = nn.InstanceNorm2d(ngf * 2)
@@ -588,6 +592,7 @@ class ResnetGenerator_attn(nn.Module):
         image7 = image[:, 18:21, :, :]
         image8 = image[:, 21:24, :, :]
         image9 = image[:, 24:27, :, :]
+        #if self.use_w_context:
         image10 = image[:, 27:30, :, :]
 
         x_attention = F.relu(self.deconv1_norm_attention(self.deconv1_attention(x)))
@@ -608,10 +613,10 @@ class ResnetGenerator_attn(nn.Module):
         attention7_ = attention[:, 6:7, :, :]
         attention8_ = attention[:, 7:8, :, :]
         attention9_ = attention[:, 8:9, :, :]
+        #if self.use_w_context:
         attention10_ = attention[:, 9:10, :, :]
 
         attention1 = attention1_.repeat(1, 3, 1, 1)
-        # print(attention1.size())
         attention2 = attention2_.repeat(1, 3, 1, 1)
         attention3 = attention3_.repeat(1, 3, 1, 1)
         attention4 = attention4_.repeat(1, 3, 1, 1)
@@ -620,35 +625,47 @@ class ResnetGenerator_attn(nn.Module):
         attention7 = attention7_.repeat(1, 3, 1, 1)
         attention8 = attention8_.repeat(1, 3, 1, 1)
         attention9 = attention9_.repeat(1, 3, 1, 1)
+        #if self.use_w_context:
         attention10 = attention10_.repeat(1, 3, 1, 1)
 
-        output1 = image1 * attention1
-        output2 = image2 * attention2
-        output3 = image3 * attention3
-        output4 = image4 * attention4
-        output5 = image5 * attention5
-        output6 = image6 * attention6
-        output7 = image7 * attention7
-        output8 = image8 * attention8
-        output9 = image9 * attention9
-        outputcontext = image10 * attention10
+        if self.use_w_context:
+            outputcontext = image10 * attention10
+        else:
+            outputcontext = image10 * attention10 * 0
+        output1 = image1 * attention1 + outputcontext
+        output2 = image2 * attention2 + outputcontext
+        output3 = image3 * attention3 + outputcontext
+        output4 = image4 * attention4 + outputcontext
+        output5 = image5 * attention5 + outputcontext
+        output6 = image6 * attention6 + outputcontext
+        output7 = image7 * attention7 + outputcontext
+        output8 = image8 * attention8 + outputcontext
+        output9 = image9 * attention9 + outputcontext
+        
         #output1 = input * attention1
 
+        #print('output1',output1.mean())
+        #print('outputcontext',outputcontext.mean())
+        
         res_outputs = []
         #print(self.conv_net(output1).shape)
-        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output2)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output3)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output4)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output5)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output6)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output7)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output8)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output9)+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output1))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output1))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output1))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output1))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output2))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output3))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output4))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output5))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output6))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output7))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output8))#+self.conv_net(outputcontext))
+        res_outputs.append(self.conv_net(output9))#+self.conv_net(outputcontext))
 
+        #print(len(res_outputs))
+        #print(res_outputs[0].shape)
+        #print(self.conv_net(outputcontext).shape)
+        
         #res_outputs.append(self.conv_net(output10))
         
         outputs=[]
