@@ -95,7 +95,7 @@ class Visualizer():
         print('Command: %s' % cmd)
         Popen(cmd, shell=True, stdout=PIPE, stderr=PIPE)
 
-    def display_current_results(self, visuals, epoch, save_result):
+    def display_current_results(self, visuals, epoch, save_result,params=[]):
         """Display current results on visdom; save current results to an HTML file.
 
         Parameters:
@@ -116,8 +116,16 @@ class Visualizer():
                 title = self.name
                 label_html = ''
                 label_html_row = ''
+                param_html = ''
+                param_html_row = ''
                 images = []
                 idx = 0
+                for param in params.items():
+                    param_html_row += '<td>%s</td>' % param[0]
+                    param_html_row += '<td>%s</td>' % param[1]
+                    param_html += '<tr>%s</tr>' % param_html_row
+                    param_html_row = ''
+                
                 for label, image in visuals.items():
                     image_numpy = util.tensor2im(image)
                     label_html_row += '<td>%s</td>' % label
@@ -137,8 +145,12 @@ class Visualizer():
                     self.vis.images(images, nrow=ncols, win=self.display_id + 1,
                                     padding=2, opts=dict(title=title + ' images'))
                     label_html = '<table>%s</table>' % label_html
+                    param_html = '<table>%s</table>' % param_html
                     self.vis.text(table_css + label_html, win=self.display_id + 2,
                                   opts=dict(title=title + ' labels'))
+                    self.vis.text(table_css + param_html, win=self.display_id + 3,
+                                  opts=dict(title=title + ' params'))
+                    
                 except VisdomExceptionBase:
                     self.create_visdom_connections()
 
