@@ -696,7 +696,7 @@ class WBlock(nn.Module):
         self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
         self.lin = nn.Linear(n_feat,512)
         w_block = []
-        w_block += [self.conv2d,nn.Flatten(),self.lin,nn.Tanh()]
+        w_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin,nn.Tanh()]
         self.w_block = init_net(nn.Sequential(*w_block), init_type, init_gain, gpu_ids)
         
     def forward(self, x):

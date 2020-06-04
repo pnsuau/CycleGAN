@@ -72,10 +72,19 @@ class CycleGANSty2Model(BaseModel):
         losses=[]
         losses += ['cycle_A', 'idt_A', 
                    'cycle_B', 'idt_B']
-        losses += ['g_nonsaturating_A','g_nonsaturating_B','weighted_path_A','weighted_path_B','d_dec_A','d_dec_B','d_dec_reg_A', 'd_dec_reg_B']
+        losses += ['g_nonsaturating_A','g_nonsaturating_B']
+
+        if self.opt.g_reg_every != 0:
+            losses +=['weighted_path_A','weighted_path_B']
+
+        losses+= ['d_dec_A','d_dec_B']
+
+        if self.opt.d_reg_every != 0:
+            losses += ['grad_pen_A','grad_pen_B']
                   
         self.loss_names = losses
         self.truncation = opt.truncation
+        self.r1 = opt.r1
         
         # specify the images you want to save/display. The program will call base_model.get_current_visuals
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
@@ -164,6 +173,8 @@ class CycleGANSty2Model(BaseModel):
                 assert(opt.input_nc == opt.output_nc)
             self.fake_A_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             self.fake_B_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
+            self.real_A_pool = ImagePool(opt.pool_size)
+            self.real_B_pool = ImagePool(opt.pool_size)
                  
             # define loss functions
             if opt.D_label_smooth:
@@ -254,13 +265,13 @@ class CycleGANSty2Model(BaseModel):
         self.loss_cycle_B = (self.criterionCycle(self.rec_B, self.real_B) + self.criterionCycle2(self.rec_B, self.real_B)) * lambda_B
         # combined loss standard cyclegan
         self.loss_G = self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
-        
-        compute_g_regularize = True
-        if self.opt.path_regularize == 0.0 or not self.niter % self.opt.g_reg_every == 0:
-            self.loss_weighted_path_A = 0* self.loss_weighted_path_A
-            self.loss_weighted_path_B = 0* self.loss_weighted_path_B
-            compute_g_regularize = False
 
+        compute_g_regularize = True
+        if self.opt.path_regularize == 0.0 or self.opt.g_reg_every == 0 or not self.niter % self.opt.g_reg_every == 0 :
+            #self.loss_weighted_path_A = 0* self.loss_weighted_path_A
+            #self.loss_weighted_path_B = 0* self.loss_weighted_path_B
+            compute_g_regularize = False
+        
         #A
         self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_A)
         self.loss_g_nonsaturating_A = self.g_nonsaturating_loss(self.fake_pred_g_loss_A)
@@ -272,14 +283,14 @@ class CycleGANSty2Model(BaseModel):
 
             self.loss_weighted_path_A = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_A
         
-            #if self.opt.path_batch_shrink:
-            #    self.loss_weighted_path_A += 0 * self.fake_A[0, 0, 0, 0]
+            if self.opt.path_batch_shrink:
+                self.loss_weighted_path_A += 0 * self.fake_A[0, 0, 0, 0]
 
             self.mean_path_length_avg_A = (
                 self.reduce_sum(self.mean_path_length_A).item() / self.get_world_size()
             )
         else:
-            self.loss_weighted_path_A = 0.0
+            self.loss_weighted_path_A = 0#*self.loss_weighted_path_A
 
         #B
         self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_B)
@@ -293,55 +304,53 @@ class CycleGANSty2Model(BaseModel):
             self.loss_weighted_path_B = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_B
         
             if self.opt.path_batch_shrink:
+                #self.loss_weighted_path_B += 0 * self.fake_img_path_loss_B[0, 0, 0, 0]
                 self.loss_weighted_path_B += 0 * self.fake_B[0, 0, 0, 0]
 
             self.mean_path_length_avg_B = (
                 self.reduce_sum(self.mean_path_length_B).item() / self.get_world_size()
             )
         else:
-            self.loss_weighted_path_B = 0.0
-                    
+            self.loss_weighted_path_B = 0#*self.loss_weighted_path_B
 
-        self.loss_G += self.opt.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)  + self.loss_weighted_path_A + self.loss_weighted_path_B
+        self.loss_G += self.opt.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)
+
+        if not self.opt.path_regularize == 0.0 and not self.opt.g_reg_every == 0 and self.niter % self.opt.g_reg_every == 0 :
+            self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
         
         self.loss_G.backward()
 
     def backward_discriminator_decoder(self):
         real_pred_A = self.netDiscriminatorDecoderG_A(self.real_A)
         fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A_pool.query(self.fake_A))
-
         self.loss_d_dec_A = self.d_logistic_loss(real_pred_A,fake_pred_A).unsqueeze(0)
-        
+
         real_pred_B = self.netDiscriminatorDecoderG_B(self.real_B)
         fake_pred_B = self.netDiscriminatorDecoderG_B(self.fake_B_pool.query(self.fake_B))
-
         self.loss_d_dec_B = self.d_logistic_loss(real_pred_B,fake_pred_B).unsqueeze(0)
-        
         self.loss_d_dec = self.loss_d_dec_A + self.loss_d_dec_B
         
-        self.real_A.requires_grad = True
-        real_pred_A_2 = self.netDiscriminatorDecoderG_A(self.real_A)
-        r1_loss_A = self.d_r1_loss(real_pred_A_2, self.real_A)
+        if self.opt.d_reg_every != 0:
+            if self.niter %self.opt.d_reg_every == 0:
+                temp = real_pred_A/real_pred_A.detach()
         
-        self.loss_d_dec_reg_A=(self.opt.r1 / 2 * r1_loss_A * self.opt.d_reg_every)# + 0 * real_pred_A[0])
+                cur_real_A = self.real_A_pool.query(self.real_A)
+                cur_real_A.requires_grad = True
+                real_pred_A_2 = self.netDiscriminatorDecoderG_A(cur_real_A)
 
-        self.real_B.requires_grad = True
-        real_pred_B_2 = self.netDiscriminatorDecoderG_B(self.real_B)
-        r1_loss_B = self.d_r1_loss(real_pred_B_2, self.real_B)
-        
-        self.loss_d_dec_reg_B=(self.opt.r1 / 2 * r1_loss_B * self.opt.d_reg_every)# + 0 * real_pred_B[0])
+                self.loss_grad_pen_A = self.gradient_penalty(cur_real_A,real_pred_A_2,self.r1)
+                
+                cur_real_B = self.real_B_pool.query(self.real_B)
+                cur_real_B.requires_grad = True
+                real_pred_B_2 = self.netDiscriminatorDecoderG_B(cur_real_B)
+            
+                self.loss_grad_pen_B = self.gradient_penalty(cur_real_B,real_pred_B_2,self.r1)
+            else:
+                self.loss_grad_pen_A = 0
+                self.loss_grad_pen_B = 0
 
-        if not self.niter %self.opt.d_reg_every == 0:
-            self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
-            self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
+            self.loss_d_dec += self.loss_grad_pen_A + self.loss_grad_pen_B
 
-        #self.loss_d_dec_A += self.loss_d_dec_reg_A
-        #self.loss_d_dec_A.backward()
-        
-        #self.loss_d_dec_B += self.loss_d_dec_reg_B
-        #self.loss_d_dec_B.backward()
-        
-        self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
         self.loss_d_dec.backward()
 
     def optimize_parameters(self):
@@ -458,5 +467,12 @@ class CycleGANSty2Model(BaseModel):
 
         return dist.get_world_size()
 
+    def gradient_penalty(self,images, output, weight = 10):
+        batch_size = images.shape[0]
+        gradients = torch.autograd.grad(outputs=output, inputs=images,
+                               grad_outputs=torch.ones(output.size()).cuda(),
+                               create_graph=True, retain_graph=True, only_inputs=True)[0]
 
+        gradients = gradients.view(batch_size, -1)
+        return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
 
