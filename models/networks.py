@@ -168,7 +168,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'resnet_attn':
-        net = ResnetGenerator_attn(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral,use_w_context=False)
+        net = ResnetGenerator_attn(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral,use_w_context=use_w_context)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     #if len(gpu_ids) > 0:
@@ -627,22 +627,34 @@ class ResnetGenerator_attn(nn.Module):
         attention9 = attention9_.repeat(1, 3, 1, 1)
         #if self.use_w_context:
         attention10 = attention10_.repeat(1, 3, 1, 1)
-
+        #print(self.use_w_context)
         if self.use_w_context:
-            outputcontext = image10 * attention10
-        else:
-            outputcontext = image10 * attention10 * 0
-        output1 = image1 * attention1 + outputcontext
-        output2 = image2 * attention2 + outputcontext
-        output3 = image3 * attention3 + outputcontext
-        output4 = image4 * attention4 + outputcontext
-        output5 = image5 * attention5 + outputcontext
-        output6 = image6 * attention6 + outputcontext
-        output7 = image7 * attention7 + outputcontext
-        output8 = image8 * attention8 + outputcontext
-        output9 = image9 * attention9 + outputcontext
+            outputcontext = input * attention10
+            output1 = image1 * attention1 + outputcontext
+            output2 = image2 * attention2 + outputcontext
+            output3 = image3 * attention3 + outputcontext
+            output4 = image4 * attention4 + outputcontext
+            output5 = image5 * attention5 + outputcontext
+            output6 = image6 * attention6 + outputcontext
+            output7 = image7 * attention7 + outputcontext
+            output8 = image8 * attention8 + outputcontext
+            output9 = image9 * attention9 + outputcontext
         
-        #output1 = input * attention1
+        else:
+            outputcontext = None
+            output1 = input * attention1
+            output2 = image2 * attention2
+            output3 = image3 * attention3
+            output4 = image4 * attention4
+            output5 = image5 * attention5
+            output6 = image6 * attention6
+            output7 = image7 * attention7
+            output8 = image8 * attention8
+            output9 = image9 * attention9
+        
+        #output1 = image1 * attention1 + outputcontext
+        
+        
 
         #print('output1',output1.mean())
         #print('outputcontext',outputcontext.mean())
@@ -674,8 +686,8 @@ class ResnetGenerator_attn(nn.Module):
             outputs.append(self.wblocks[nou](o))
             nou += 1
         
-            #o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
-        return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, outputcontext#, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
+        o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 #+ output10
+        return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, outputcontext, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9,o
     
 class resnet_block_attn(nn.Module):
     def __init__(self, channel, kernel, stride, padding):
