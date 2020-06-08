@@ -11,7 +11,7 @@ import numpy as np
 import torch.nn.functional as F
 from torch.autograd import Variable
 from .UNet import UNet
-from .decoder_stylegan2 import Generator as GeneratorStyleGAN2, Discriminator as DiscriminatorStyleGAN2
+from .decoder_stylegan2 import Generator as GeneratorStyleGAN2, Discriminator as DiscriminatorStyleGAN2, EqualLinear as EqualLinear
 import math
 ###############################################################################
 # Helper Functions
@@ -441,12 +441,24 @@ class ResnetGenerator(nn.Module):
         else:
             if wplus == False:
                 n_feat = 1024 # 256
-                to_z = [nn.Linear(n_feat,512)] # 512 = sty2 image output size
-                to_z += [nn.Tanh()]
-                self.to_z = nn.Sequential(*to_z)
-                #self.mpool = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)
-                #self.zrelu = nn.ReLU()
+
+                to_w = [nn.Linear(n_feat,512)] # 512 = sty2 image output size
+                to_w += [nn.Tanh()]
+                self.to_w = nn.Sequential(*to_2)
                 self.conv = nn.Conv2d(ngf*mult,1, kernel_size=1)
+
+                #wlayers = []
+                #style_dim = 512
+                #lr_mlp = 0.01
+                #wlayers.append(EqualLinear(n_feat,style_dim,lr_mul=lr_mlp,activation="fused_lrelu"))
+                #n_mlp = 7
+                #for i in range(n_mlp):
+                #    wlayers.append(
+                #        EqualLinear(
+                #            style_dim, style_dim, lr_mul=lr_mlp, activation='fused_lrelu'
+                #        )
+                #    )
+                #self.to_w = nn.Sequential(*wlayers)
             else:
                 n_feat = 1024 # 256 with mpool
                 n_feat = 2**(2*int(math.log(img_size,2)-2))
@@ -454,7 +466,11 @@ class ResnetGenerator(nn.Module):
                 self.wblocks = nn.ModuleList()
                 for n in range(0,self.n_wplus):
                     self.wblocks += [WBlock(ngf*mult,n_feat,init_type,init_gain,gpu_ids)]
-                
+                self.nblocks = nn.ModuleList()
+                noise_map = [4,8,8,16,16,32,32,64,64,128,128] #TODO: res > 128
+                for n in range(0,self.n_wplus-1):
+                    self.nblocks += [NBlock(ngf*mult,n_feat,noise_map[n],init_type,init_gain,gpu_ids)]
+                    
         self.model = nn.Sequential(*model)
         self.head = nn.Sequential(*head)
         
@@ -473,15 +489,16 @@ class ResnetGenerator(nn.Module):
             #print('res_outputs size=',len(res_outputs))
             #sys.exit()
             
-        if hasattr(self,'to_z'):
+        if hasattr(self,'to_w'):
             #output = self.mpool(output)
             #output = self.zrelu(output)
             output = self.conv(output).squeeze(dim=1)
             output = torch.flatten(output,1)
-            output = self.to_z(output).unsqueeze(dim=0) # maybe: factor 3 to reach a N(0,1) from a tanh
+            output = self.to_w(output).unsqueeze(dim=0)
             return output
         elif hasattr(self,'wblocks'):
             outputs = []
+            noutputs = []
             #print('len=',len(self.wconv2))
             #for n in range(0,len(self.wconv2d)):
             #    output1 = self.mpool(output)
@@ -493,15 +510,22 @@ class ResnetGenerator(nn.Module):
                 for wc in self.wblocks:
                     #print(type(wc))
                     outputs.append(wc(output))
+                #print('nblocks size=',len(self.nblocks))
+                for nc in self.nblocks:
+                    noutputs.append(nc(output))
+                #print('done with noutputs')
+                #sys.exit()
             else:
                 nou = 0
                 for o in res_outputs: # skip connections to latent heads
                     outputs.append(self.wblocks[nou](o))
+                    noutputs.append(self.nblocks[nou](o))
                     nou += 1
                 for k in range(0,self.n_wplus-nou): # remaining latent heads
                     outputs.append(self.wblocks[nou+k](output))
-            #sys.exit()
-            return outputs
+                for k in range(0,self.n_wplus-nou-1):
+                    noutputs.append(self.nblocks[nou+k](output))
+            return outputs, noutputs
         else:
             return output
 
@@ -663,6 +687,20 @@ class WBlock(nn.Module):
         
     def forward(self, x):
         out = self.w_block(x)
+        return out
+
+class NBlock(nn.Module):
+    """Define a linear block for N"""
+    def __init__(self, dim, n_feat, out_feat, init_type='normal', init_gain=0.02, gpu_ids=[]):
+        super(NBlock, self).__init__()
+        self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
+        self.lin = nn.Linear(n_feat,out_feat)
+        n_block = []
+        n_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin,nn.Tanh()]
+        self.n_block = init_net(nn.Sequential(*n_block), init_type, init_gain, gpu_ids)
+        
+    def forward(self, x):
+        out = self.n_block(x)
         return out
         
 class ResnetBlock(nn.Module):
