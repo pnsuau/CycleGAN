@@ -693,15 +693,16 @@ class NBlock(nn.Module):
     """Define a linear block for N"""
     def __init__(self, dim, n_feat, out_feat, init_type='normal', init_gain=0.02, gpu_ids=[]):
         super(NBlock, self).__init__()
+        self.out_feat = out_feat
         self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
-        self.lin = nn.Linear(n_feat,out_feat)
+        self.lin = nn.Linear(n_feat,out_feat**2)
         n_block = []
         n_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin,nn.Tanh()]
         self.n_block = init_net(nn.Sequential(*n_block), init_type, init_gain, gpu_ids)
         
     def forward(self, x):
         out = self.n_block(x)
-        return out
+        return torch.reshape(out.unsqueeze(1),(1,1,self.out_feat,self.out_feat))
         
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""
