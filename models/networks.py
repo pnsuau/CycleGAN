@@ -589,6 +589,11 @@ class ResnetGenerator_attn(nn.Module):
         for n in range(0,self.n_wplus):
             self.wblocks += [WBlock(1,n_feat,init_type,init_gain,gpu_ids)]
 
+        self.nblocks = nn.ModuleList()
+        noise_map = [4,8,8,16,16,32,32,64,64,128,128] #TODO: res > 128
+        for n in range(0,self.n_wplus-1):
+            self.nblocks += [NBlock(1,n_feat,noise_map[n],init_type,init_gain,gpu_ids)]
+
     # weight_init
     def weight_init(self, mean, std):
         for m in self._modules:
@@ -705,13 +710,17 @@ class ResnetGenerator_attn(nn.Module):
         #res_outputs.append(self.conv_net(output10))
         
         outputs=[]
+        noutputs=[]
         nou = 0
         for o in res_outputs: # skip connections to latent heads
             outputs.append(self.wblocks[nou](o))
+        for k in range(0,self.n_wplus-nou-1):
+            noutputs.append(self.nblocks[k](res_outputs[k]))
+            #noutputs.append(self.nblocks[nou](o))
             nou += 1
         
         o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 #+ output10
-        return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, outputcontext, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9,o
+        return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, outputcontext, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9,o,noutputs
     
 class resnet_block_attn(nn.Module):
     def __init__(self, channel, kernel, stride, padding):
@@ -770,7 +779,8 @@ class NBlock(nn.Module):
         
     def forward(self, x):
         out = self.n_block(x)
-        return torch.reshape(out.unsqueeze(1),(1,1,self.out_feat,self.out_feat))
+        batch = out.shape[0]
+        return torch.reshape(out.unsqueeze(1),(batch,1,self.out_feat,self.out_feat))
         
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""
