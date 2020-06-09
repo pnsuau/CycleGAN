@@ -156,7 +156,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         #output_attn_B.append('attention10_fake_B')
         #output_attn_B.append('image2_fake_B')
-        output_attn_B.append('o_fake_B')
+        #output_attn_B.append('o_fake_B')
 
 
         #output_attn_B = ['outputcontext_fake_B']
@@ -305,18 +305,19 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.mean_path_length_B = 0
 
             #Parameters to display
+            self.display_param.append('batch_size')
             self.display_param.append('lambda_A')
             self.display_param.append('lambda_B')
-            self.display_param.append('D_lr')
-            self.display_param.append('batch_size')
-            self.display_param.append('gpu_ids')
             self.display_param.append('lambda_G')
             self.display_param.append('lambda_identity')
             self.display_param.append('lambda_w_context')
-            self.display_param.append('loss_content')
-            self.display_param.append('loss_context')
+            self.display_param.append('lambda_f_s')
+            self.display_param.append('D_lr')
             self.display_param.append('lr')
             self.display_param.append('lr_f_s')
+            self.display_param.append('gpu_ids')
+            self.display_param.append('loss_content')
+            self.display_param.append('loss_context')
             self.display_param.append('netD')
             self.display_param.append('netG')
             self.display_param.append('no_flip')
@@ -325,9 +326,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.display_param.append('use_w_context')
             self.display_param.append('wplus')
             self.display_param.append('wskip')
-            self.display_param.append('lambda_f_s')
-
-
+            self.display_param.append('d_reg_every')
+            self.display_param.append('g_reg_every')
             self.w_context_ref = ['rec','fake','idt']
             
             #if opt.D_noise:   
@@ -382,9 +382,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         #self.z_fake_B, self.n_fake_B = self.netG_A(self.real_A)
 
 
-        self.attention2_fake_B= temp_z_fake_B[12]
-        self.image2_fake_B= temp_z_fake_B[22]
-        self.o_fake_B= temp_z_fake_B[-2]
+        #self.attention2_fake_B= temp_z_fake_B[12]
+        #self.image2_fake_B= temp_z_fake_B[22]
+        #self.o_fake_B= temp_z_fake_B[-2]
         
         d = 1
         
@@ -722,9 +722,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_G += self.loss_wcontext_real_A + self.loss_wcontext_real_B
 
         if hasattr(self,'criterionWContent'):
-            self.loss_wcontent_rec_A_idt_B=self.criterionWContent(torch.cat(self.z_rec_A)[3:12],torch.cat(self.z_idt_B)[3:12]) * self.opt.lambda_w_context
+            self.loss_wcontent_rec_A_idt_B=self.criterionWContent(torch.cat(self.z_rec_A)[2:9],torch.cat(self.z_idt_B)[2:9]) * self.opt.lambda_w_content
 
-            self.loss_wcontent_rec_B_idt_A=self.criterionWContent(torch.cat(self.z_rec_B)[3:12],torch.cat(self.z_idt_A)[3:12]) * self.opt.lambda_w_context
+            self.loss_wcontent_rec_B_idt_A=self.criterionWContent(torch.cat(self.z_rec_B)[2:9],torch.cat(self.z_idt_A)[2:9]) * self.opt.lambda_w_content
 
             self.loss_G += self.loss_wcontent_rec_B_idt_A + self.loss_wcontent_rec_A_idt_B
             
@@ -746,7 +746,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         #print('temp_fake_A',temp_fake_A.requires_grad)
         temp_fake_A.requires_grad = True
         #print('temp_fake_A',temp_fake_A.requires_grad)
-
         
         temp_real_A = self.real_A_pool.query(self.real_A)
         temp_z_fake_B= self.netG_A(self.real_A)[0]
@@ -754,8 +753,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         temp_real_B = self.real_B_pool.query(self.real_B)
         temp_z_fake_A= self.netG_B(self.real_B)[0]
 
-
-        
         temp_fake_B,temp_latent_fake_B = self.netDecoderG_A(temp_z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=self.randomize_noise,return_latents=True, noise=self.n_fake_B)
         temp_fake_A,temp_latent_fake_A = self.netDecoderG_B(temp_z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=self.randomize_noise,return_latents=True, noise=self.n_fake_A)
 
@@ -870,7 +867,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.g_reg()             # calculate gradients for G_A and G_B
             self.optimizer_G.step()       # update G_A and G_B's weights
 
-
         self.set_requires_grad([self.netf_s], True)
         # f_s
         self.optimizer_f_s.zero_grad()
@@ -899,13 +895,11 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         # noisy_tensor = 2 * (noisy_image - noisy_image.min()) / (noisy_image.max() - noisy_image.min()) - 1
         return noisy_image
 
-
     def d_logistic_loss(self,real_pred, fake_pred):
         real_loss = F.softplus(-real_pred)
         fake_loss = F.softplus(fake_pred)
 
         return real_loss.mean() + fake_loss.mean()
-
 
     def d_r1_loss(self,real_pred, real_img):
         grad_real, = torch.autograd.grad(
@@ -916,11 +910,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         
         return grad_penalty
 
-
     def g_nonsaturating_loss(self,fake_pred):
         loss = F.softplus(-fake_pred).mean()
         return loss
-
 
     def g_path_regularize(self,fake_img, latents, mean_path_length, decay=0.01):
         noise = torch.randn_like(fake_img) / math.sqrt(
