@@ -81,6 +81,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
             parser.add_argument('--randomize_noise', action='store_true', help='whether to use random noise in sty2 decoder')
 
+            parser.add_argument('--nb_mask_input', type=int, default=2,help='')
     
         return parser
     
@@ -167,10 +168,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         print('define gen')
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.decoder_size)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.decoder_size,nb_mask_input=self.opt.nb_mask_input)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.decoder_size)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.decoder_size,nb_mask_input=self.opt.nb_mask_input)
 
         # Define stylegan2 decoder
         print('define decoder')
@@ -310,6 +311,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.display_param.append('percept_loss')
             self.display_param.append('wplus')
             self.display_param.append('wskip')
+            
+            self.display_param.append('nb_mask_input')
             
             #if opt.D_noise:   
                #self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
