@@ -542,59 +542,16 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_out_mask_AB = self.criterionMask( self.real_A_out_mask, self.fake_B_out_mask) * lambda_out_mask
             self.loss_out_mask_BA = self.criterionMask( self.real_B_out_mask, self.fake_A_out_mask) * lambda_out_mask
             self.loss_G += self.loss_out_mask_AB + self.loss_out_mask_BA
-
-
-        compute_g_regularize = True
-        if self.opt.path_regularize == 0.0 or self.opt.g_reg_every == 0 or not self.niter % self.opt.g_reg_every == 0 :
-            #self.loss_weighted_path_A = 0* self.loss_weighted_path_A
-            #self.loss_weighted_path_B = 0* self.loss_weighted_path_B
-            compute_g_regularize = False
         
         #A
         self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_A)
         self.loss_g_nonsaturating_A = self.g_nonsaturating_loss(self.fake_pred_g_loss_A)
         
-        if compute_g_regularize:
-            self.path_loss_A, self.mean_path_length_A, self.path_lengths_A = self.g_path_regularize(
-                self.fake_A, self.latent_fake_A, self.mean_path_length_A
-            )
-
-            self.loss_weighted_path_A = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_A
-        
-            if self.opt.path_batch_shrink:
-                self.loss_weighted_path_A += 0 * self.fake_A[0, 0, 0, 0]
-
-            self.mean_path_length_avg_A = (
-                self.reduce_sum(self.mean_path_length_A).item() / self.get_world_size()
-            )
-        else:
-            self.loss_weighted_path_A = 0#*self.loss_weighted_path_A
-
         #B
         self.fake_pred_g_loss_B = self.netDiscriminatorDecoderG_B(self.fake_B)
         self.loss_g_nonsaturating_B = self.g_nonsaturating_loss(self.fake_pred_g_loss_B)
         
-        if compute_g_regularize:
-            self.path_loss_B, self.mean_path_length_B, self.path_lengths_B = self.g_path_regularize(
-                self.fake_B, self.latent_fake_B, self.mean_path_length_B
-            )
-
-            self.loss_weighted_path_B = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_B
-        
-            if self.opt.path_batch_shrink:
-                #self.loss_weighted_path_B += 0 * self.fake_img_path_loss_B[0, 0, 0, 0]
-                self.loss_weighted_path_B += 0 * self.fake_B[0, 0, 0, 0]
-
-            self.mean_path_length_avg_B = (
-                self.reduce_sum(self.mean_path_length_B).item() / self.get_world_size()
-            )
-        else:
-            self.loss_weighted_path_B = 0#*self.loss_weighted_path_B
-
         self.loss_G += self.opt.lambda_G*(self.loss_g_nonsaturating_A + self.loss_g_nonsaturating_B)
-
-        if not self.opt.path_regularize == 0.0 and not self.opt.g_reg_every == 0 and self.niter % self.opt.g_reg_every == 0 :
-            self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
 
         if hasattr(self,'criterionWContext'):
             self.loss_wcontext_fake_A_rec_B=self.criterionWContext(self.outputcontext_fake_A,self.outputcontext_rec_B) * self.opt.lambda_w_context
@@ -614,6 +571,48 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             
         self.loss_G.backward()
 
+    def g_reg(self):
+
+        temp_real_A = self.real_A_pool.query(self.real_A)
+        temp_z_fake_B,temp_n_fake_B= self.netG_A(self.real_A)
+
+        temp_real_B = self.real_B_pool.query(self.real_B)
+        temp_z_fake_A,temp_n_fake_A= self.netG_B(self.real_B)
+
+        temp_fake_B,temp_latent_fake_B = self.netDecoderG_A(temp_z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=self.randomize_noise,return_latents=True, noise=temp_n_fake_B)
+        temp_fake_A,temp_latent_fake_A = self.netDecoderG_B(temp_z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=self.randomize_noise,return_latents=True, noise=temp_n_fake_A)
+
+        self.path_loss_A, self.mean_path_length_A, self.path_lengths_A = self.g_path_regularize(
+            temp_fake_A, temp_latent_fake_A, self.mean_path_length_A
+        )
+
+        self.loss_weighted_path_A = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_A
+        
+        if self.opt.path_batch_shrink:
+            self.loss_weighted_path_A += 0 * temp_fake_A[0, 0, 0, 0]
+            
+        self.mean_path_length_avg_A = (
+            self.reduce_sum(self.mean_path_length_A).item() / self.get_world_size()
+        )
+
+        self.path_loss_B, self.mean_path_length_B, self.path_lengths_B = self.g_path_regularize(
+            temp_fake_B, temp_latent_fake_B, self.mean_path_length_B
+        )
+
+        self.loss_weighted_path_B = self.opt.path_regularize * self.opt.g_reg_every * self.path_loss_B
+        
+        if self.opt.path_batch_shrink:
+            #self.loss_weighted_path_B += 0 * self.fake_img_path_loss_B[0, 0, 0, 0]
+            self.loss_weighted_path_B += 0 * temp_fake_B[0, 0, 0, 0]
+
+        self.mean_path_length_avg_B = (
+            self.reduce_sum(self.mean_path_length_B).item() / self.get_world_size()
+        )
+
+        self.loss_weighted_path = self.loss_weighted_path_A + self.loss_weighted_path_B
+
+        self.loss_weighted_path.backward()
+
     def backward_discriminator_decoder(self):
         real_pred_A = self.netDiscriminatorDecoderG_A(self.real_A)
         fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A_pool.query(self.fake_A))
@@ -622,8 +621,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         #print(self.loss_d_dec_A)
         
-
-        
         real_pred_B = self.netDiscriminatorDecoderG_B(self.real_B)
         fake_pred_B = self.netDiscriminatorDecoderG_B(self.fake_B_pool.query(self.fake_B))
         self.loss_d_dec_B = self.d_logistic_loss(real_pred_B,fake_pred_B).unsqueeze(0)
@@ -631,43 +628,38 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.loss_d_dec = self.loss_d_dec_A + self.loss_d_dec_B
         #print(self.d_loss)
         #print(self.d_loss.shape)
-        
-        if self.opt.d_reg_every != 0:
-            if self.niter %self.opt.d_reg_every == 0:
-                temp = real_pred_A/real_pred_A.detach()
-        
-                #self.real_A.requires_grad = True
-                #real_pred_A_2 = self.netDiscriminatorDecoderG_A(self.real_A)
-                cur_real_A = self.real_A_pool.query(self.real_A)
-                cur_real_A.requires_grad = True
-                real_pred_A_2 = self.netDiscriminatorDecoderG_A(cur_real_A)
-                #r1_loss_A = self.d_r1_loss(real_pred_A_2, cur_real_A)
-
-                self.loss_grad_pen_A = self.gradient_penalty(cur_real_A,real_pred_A_2,self.r1)
-                
-                #self.loss_d_dec_reg_A=self.opt.r1 / 2 * r1_loss_A * self.opt.d_reg_every * temp
-                
-                #self.real_B.requires_grad = True
-                #real_pred_B_2 = self.netDiscriminatorDecoderG_B(self.real_B)
-                cur_real_B = self.real_B_pool.query(self.real_B)
-                cur_real_B.requires_grad = True
-                real_pred_B_2 = self.netDiscriminatorDecoderG_B(cur_real_B)
-                #r1_loss_B = self.d_r1_loss(real_pred_B_2, cur_real_B)
-            
-                self.loss_grad_pen_B = self.gradient_penalty(cur_real_B,real_pred_B_2,self.r1)
-                
-                #self.loss_d_dec_reg_B=self.opt.r1 / 2 * r1_loss_B * self.opt.d_reg_every * temp
-        
-                #self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
-                #self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
-            else:
-                self.loss_grad_pen_A = 0# * self.loss_grad_pen_A
-                self.loss_grad_pen_B = 0# * self.loss_grad_pen_B
-
-            #self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
-            self.loss_d_dec += self.loss_grad_pen_A + self.loss_grad_pen_B
 
         self.loss_d_dec.backward()
+
+    def d_reg(self):
+        #self.real_A.requires_grad = True
+        #real_pred_A_2 = self.netDiscriminatorDecoderG_A(self.real_A)
+        cur_real_A = self.real_A_pool.query(self.real_A)
+        cur_real_A.requires_grad = True
+        real_pred_A_2 = self.netDiscriminatorDecoderG_A(cur_real_A)
+        #r1_loss_A = self.d_r1_loss(real_pred_A_2, cur_real_A)
+        
+        self.loss_grad_pen_A = self.gradient_penalty(cur_real_A,real_pred_A_2,self.r1)
+        
+        #self.loss_d_dec_reg_A=self.opt.r1 / 2 * r1_loss_A * self.opt.d_reg_every * temp
+        
+        #self.real_B.requires_grad = True
+        #real_pred_B_2 = self.netDiscriminatorDecoderG_B(self.real_B)
+        cur_real_B = self.real_B_pool.query(self.real_B)
+        cur_real_B.requires_grad = True
+        real_pred_B_2 = self.netDiscriminatorDecoderG_B(cur_real_B)
+        #r1_loss_B = self.d_r1_loss(real_pred_B_2, cur_real_B)
+        
+        self.loss_grad_pen_B = self.gradient_penalty(cur_real_B,real_pred_B_2,self.r1)
+        
+        #self.loss_d_dec_reg_B=self.opt.r1 / 2 * r1_loss_B * self.opt.d_reg_every * temp
+        
+        #self.loss_d_dec_reg_A = 0 * self.loss_d_dec_reg_A
+        #self.loss_d_dec_reg_B = 0 * self.loss_d_dec_reg_B
+        #self.loss_d_dec += self.loss_d_dec_reg_A + self.loss_d_dec_reg_B
+        self.loss_grad_pen = self.loss_grad_pen_A + self.loss_grad_pen_B
+
+        self.loss_grad_pen.backward()
 
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
@@ -684,6 +676,14 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.backward_G()             # calculate gradients for G_A and G_B
         self.optimizer_G.step()       # update G_A and G_B's weights
 
+        if self.opt.g_reg_every !=0 and self.niter % self.opt.g_reg_every == 0:
+            self.optimizer_G.zero_grad()
+            self.g_reg()
+            self.optimizer_G.step()
+
+        self.set_requires_grad([self.netG_A, self.netG_B], False)
+        self.set_requires_grad([self.netDecoderG_A, self.netDecoderG_B], False) 
+
         self.set_requires_grad([self.netf_s], True)
         # f_s
         self.optimizer_f_s.zero_grad()
@@ -691,11 +691,18 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.optimizer_f_s.step()
 
         self.optimizer_D_Decoder.zero_grad()
-        self.niter = self.niter +1
         self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], True)
         self.backward_discriminator_decoder()
         self.optimizer_D_Decoder.step()
+
+        if self.opt.d_reg_every !=0 and self.niter % self.opt.d_reg_every == 0:
+            self.optimizer_D_Decoder.zero_grad()
+            self.d_reg()
+            self.optimizer_D_Decoder.step()
+
         self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], False)
+
+        self.niter = self.niter +1
 
     def gaussian(self, in_tensor):
         noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, self.stddev).cuda() + in_tensor
