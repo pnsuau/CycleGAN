@@ -682,7 +682,7 @@ class WBlock(nn.Module):
         self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
         self.lin = nn.Linear(n_feat,512)
         w_block = []
-        w_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin,nn.Tanh()]
+        w_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin]
         self.w_block = init_net(nn.Sequential(*w_block), init_type, init_gain, gpu_ids)
         
     def forward(self, x):
@@ -697,7 +697,7 @@ class NBlock(nn.Module):
         self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
         self.lin = nn.Linear(n_feat,out_feat**2)
         n_block = []
-        n_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin,nn.Tanh()]
+        n_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin]
         self.n_block = init_net(nn.Sequential(*n_block), init_type, init_gain, gpu_ids)
         
     def forward(self, x):
