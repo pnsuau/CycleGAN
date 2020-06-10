@@ -209,6 +209,29 @@ class CycleGANSty2Model(BaseModel):
             self.niter=0
             self.mean_path_length_A = 0
             self.mean_path_length_B = 0
+
+            #Parameters to display
+            self.display_param.append('lambda_A')
+            self.display_param.append('lambda_B')
+            self.display_param.append('D_lr')
+            self.display_param.append('batch_size')
+            self.display_param.append('gpu_ids')
+            self.display_param.append('lambda_G')
+            self.display_param.append('lambda_identity')
+            self.display_param.append('lambda_w_context')
+            self.display_param.append('loss_content')
+            self.display_param.append('loss_context')
+            self.display_param.append('lr')
+            self.display_param.append('lr_f_s')
+            self.display_param.append('netD')
+            self.display_param.append('netG')
+            self.display_param.append('no_flip')
+            self.display_param.append('no_rotate')
+            self.display_param.append('percept_loss')
+            self.display_param.append('use_w_context')
+            self.display_param.append('wplus')
+            self.display_param.append('wskip')
+
             
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'
