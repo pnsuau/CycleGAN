@@ -410,7 +410,7 @@ class Generator(nn.Module):
 
         self.log_size = int(math.log(size, 2))
         self.num_layers = (self.log_size - 2) * 2 + 1
-
+        
         self.convs = nn.ModuleList()
         self.upsamples = nn.ModuleList()
         self.to_rgbs = nn.ModuleList()
@@ -422,7 +422,7 @@ class Generator(nn.Module):
             res = (layer_idx + 5) // 2
             shape = [1, 1, 2 ** res, 2 ** res]
             self.noises.register_buffer(f'noise_{layer_idx}', torch.randn(*shape))
-
+            
         for i in range(3, self.log_size + 1):
             out_channel = self.channels[2 ** i]
 
