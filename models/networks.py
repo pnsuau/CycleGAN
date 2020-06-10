@@ -533,12 +533,14 @@ class ResnetGenerator(nn.Module):
         
 class ResnetGenerator_attn(nn.Module):
     # initializers
-    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[],nb_mask_attn=12,nb_mask_input=2):
         super(ResnetGenerator_attn, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
         self.nb = n_blocks
+        self.nb_mask_attn = nb_mask_attn
+        self.nb_mask_input = nb_mask_input
         self.conv1 = spectral_norm(nn.Conv2d(input_nc, ngf, 7, 1, 0),use_spectral)
         self.conv1_norm = nn.InstanceNorm2d(ngf)
         self.conv2 = spectral_norm(nn.Conv2d(ngf, ngf * 2, 3, 2, 1),use_spectral)
@@ -557,13 +559,13 @@ class ResnetGenerator_attn(nn.Module):
         self.deconv1_norm_content = nn.InstanceNorm2d(ngf * 2)
         self.deconv2_content = spectral_norm(nn.ConvTranspose2d(ngf * 2, ngf, 3, 2, 1, 1),use_spectral)
         self.deconv2_norm_content = nn.InstanceNorm2d(ngf)
-        self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 30, 7, 1, 0),use_spectral)#27 instead of 30
+        self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 3 * (nb_mask_attn-nb_mask_input), 7, 1, 0),use_spectral)#27 instead of 30
 
         self.deconv1_attention = spectral_norm(nn.ConvTranspose2d(ngf * 4, ngf * 2, 3, 2, 1, 1),use_spectral)
         self.deconv1_norm_attention = nn.InstanceNorm2d(ngf * 2)
         self.deconv2_attention = spectral_norm(nn.ConvTranspose2d(ngf * 2, ngf, 3, 2, 1, 1),use_spectral)
         self.deconv2_norm_attention = nn.InstanceNorm2d(ngf)
-        self.deconv3_attention = nn.Conv2d(ngf, 10, 1, 1, 0)
+        self.deconv3_attention = nn.Conv2d(ngf,nb_mask_attn, 1, 1, 0)
         
         self.tanh = torch.nn.Tanh()
 
@@ -584,6 +586,11 @@ class ResnetGenerator_attn(nn.Module):
         for n in range(0,self.n_wplus):
             self.wblocks += [WBlock(1,n_feat,init_type,init_gain,gpu_ids)]
 
+        self.nblocks = nn.ModuleList()
+        noise_map = [4,8,8,16,16,32,32,64,64,128,128] #TODO: res > 128
+        for n in range(0,self.n_wplus-1):
+            self.nblocks += [NBlock(1,n_feat,noise_map[n],init_type,init_gain,gpu_ids)]
+
     # weight_init
     def weight_init(self, mean, std):
         for m in self._modules:
@@ -601,17 +608,11 @@ class ResnetGenerator_attn(nn.Module):
         x_content = F.pad(x_content, (3, 3, 3, 3), 'reflect')
         content = self.deconv3_content(x_content)
         image = self.tanh(content)
-        image1 = image[:, 0:3, :, :]
-        # print(image1.size()) # [1, 3, 256, 256]
-        image2 = image[:, 3:6, :, :]
-        image3 = image[:, 6:9, :, :]
-        image4 = image[:, 9:12, :, :]
-        image5 = image[:, 12:15, :, :]
-        image6 = image[:, 15:18, :, :]
-        image7 = image[:, 18:21, :, :]
-        image8 = image[:, 21:24, :, :]
-        image9 = image[:, 24:27, :, :]
-        image10 = image[:, 27:30, :, :]
+
+        images = []
+
+        for i in range(self.nb_mask_attn - self.nb_mask_input):
+            images.append(image[:, 3*i:3*(i+1), :, :])
 
         x_attention = F.relu(self.deconv1_norm_attention(self.deconv1_attention(x)))
         x_attention = F.relu(self.deconv2_norm_attention(self.deconv2_attention(x_attention)))
@@ -622,66 +623,38 @@ class ResnetGenerator_attn(nn.Module):
         softmax_ = torch.nn.Softmax(dim=1)
         attention = softmax_(attention)
 
-        attention1_ = attention[:, 0:1, :, :]
-        attention2_ = attention[:, 1:2, :, :]
-        attention3_ = attention[:, 2:3, :, :]
-        attention4_ = attention[:, 3:4, :, :]
-        attention5_ = attention[:, 4:5, :, :]
-        attention6_ = attention[:, 5:6, :, :]
-        attention7_ = attention[:, 6:7, :, :]
-        attention8_ = attention[:, 7:8, :, :]
-        attention9_ = attention[:, 8:9, :, :]
-        attention10_ = attention[:, 9:10, :, :]
+        attentions =[]
+        
+        for i in range(self.nb_mask_attn):
+            attentions.append(attention[:, i:i+1, :, :].repeat(1, 3, 1, 1))
 
-        attention1 = attention1_.repeat(1, 3, 1, 1)
-        # print(attention1.size())
-        attention2 = attention2_.repeat(1, 3, 1, 1)
-        attention3 = attention3_.repeat(1, 3, 1, 1)
-        attention4 = attention4_.repeat(1, 3, 1, 1)
-        attention5 = attention5_.repeat(1, 3, 1, 1)
-        attention6 = attention6_.repeat(1, 3, 1, 1)
-        attention7 = attention7_.repeat(1, 3, 1, 1)
-        attention8 = attention8_.repeat(1, 3, 1, 1)
-        attention9 = attention9_.repeat(1, 3, 1, 1)
-        attention10 = attention10_.repeat(1, 3, 1, 1)
+        outputs = []
 
-        output1 = image1 * attention1
-        output2 = image2 * attention2
-        output3 = image3 * attention3
-        output4 = image4 * attention4
-        output5 = image5 * attention5
-        output6 = image6 * attention6
-        output7 = image7 * attention7
-        output8 = image8 * attention8
-        output9 = image9 * attention9
-        outputcontext = image10 * attention10
+        for i in range(self.nb_mask_attn):
+            if i < self.nb_mask_input:
+                outputs.append(input*attentions[i])
+            else:
+                outputs.append(images[i-self.nb_mask_input]*attentions[i])
         #output1 = input * attention1
 
         res_outputs = []
         #print(self.conv_net(output1).shape)
-        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output1)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output2)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output3)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output4)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output5)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output6)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output7)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output8)+self.conv_net(outputcontext))
-        res_outputs.append(self.conv_net(output9)+self.conv_net(outputcontext))
 
-        #res_outputs.append(self.conv_net(output10))
+        #print('len outputs', len(outputs))
         
-        outputs=[]
+        for i in range(self.n_wplus):
+            res_outputs.append(self.conv_net(outputs[i]))
+            
+        ws=[]
+        ns=[]
         nou = 0
         for o in res_outputs: # skip connections to latent heads
-            outputs.append(self.wblocks[nou](o))
+            ws.append(self.wblocks[nou](o))
+            if nou < len(self.nblocks):
+                ns.append(self.nblocks[nou](o))
             nou += 1
-        
-            #o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
-        return outputs, output1, output2, output3, output4, output5, output6, output7, output8, output9, outputcontext#, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
+            
+        return ws,ns#,output1, output2, output3, output4, output5, output6, output7, output8, output9, outputcontext, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
     
 class resnet_block_attn(nn.Module):
     def __init__(self, channel, kernel, stride, padding):
