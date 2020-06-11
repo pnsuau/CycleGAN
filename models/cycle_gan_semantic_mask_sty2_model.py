@@ -63,7 +63,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--truncation',type=float,default=1,help='whether to use truncation trick (< 1)')
             parser.add_argument('--decoder_size', type=int, default=512)
             parser.add_argument('--d_reg_every', type=int, default=16,help='regularize discriminator each x iterations, no reg if set to 0')
-            parser.add_argument('--g_reg_every', type=int, default=4,help='regularize decider sty2 each x iterations, no reg if set to 0')
+            parser.add_argument('--g_reg_every', type=int, default=4,help='regularize decoder sty2 each x iterations, no reg if set to 0')
             parser.add_argument('--r1', type=float, default=10)
             parser.add_argument('--mixing', type=float, default=0.9)
             parser.add_argument('--path_batch_shrink', type=int, default=2)
@@ -74,6 +74,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--load_weigth_decoder', action='store_true')
             parser.add_argument('--percept_loss', action='store_true', help='whether to use perceptual loss for reconstruction and identity')
             parser.add_argument('--randomize_noise', action='store_true', help='whether to use random noise in sty2 decoder')
+
+            
+            parser.add_argument('--style_mix_every', type=int, default=1)
     
         return parser
     
@@ -93,13 +96,16 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         losses += ['g_nonsaturating_A','g_nonsaturating_B']
 
-        if self.opt.g_reg_every != 0:
+        if opt.g_reg_every != 0:
             losses +=['weighted_path_A','weighted_path_B']
 
         losses+= ['d_dec_A','d_dec_B']
 
-        if self.opt.d_reg_every != 0:
+        if opt.d_reg_every != 0:
             losses += ['grad_pen_A','grad_pen_B']#,'d_dec_reg_A', 'd_dec_reg_B']
+
+        if opt.style_mix_every !=0:
+            losses +=['g_nonsaturating_B_mix','g_nonsaturating_A_mix']
         
         self.loss_names = losses
         self.truncation = opt.truncation
@@ -130,11 +136,16 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         visual_names_mask_in = ['real_B_mask','fake_B_mask','real_A_mask','fake_A_mask',
                                 'real_B_mask_in','fake_B_mask_in','real_A_mask_in','fake_A_mask_in']
+
+        visual_names_mix = ['fake_B_mix','fake_A_mix']
         
         self.visual_names = visual_names_A + visual_names_B + visual_names_seg_A + visual_names_seg_B 
 
         if opt.out_mask :
             self.visual_names += visual_names_out_mask
+
+        if opt.style_mix_every !=0:
+            self.visual_names += visual_names_mix
 
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
@@ -221,7 +232,13 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.fake_B_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             self.real_A_pool = ImagePool(opt.pool_size)
             self.real_B_pool = ImagePool(opt.pool_size)
-                
+
+            self.z_fake_A_pool = ImagePool(opt.pool_size)
+            self.z_fake_B_pool = ImagePool(opt.pool_size)
+
+            self.n_fake_A_pool = ImagePool(opt.pool_size)
+            self.n_fake_B_pool = ImagePool(opt.pool_size)
+            
             # define loss functions
             if opt.D_label_smooth:
                 target_real_label = 0.9
@@ -275,9 +292,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.display_param.append('gpu_ids')
             self.display_param.append('lambda_G')
             self.display_param.append('lambda_identity')
-            self.display_param.append('lambda_w_context')
-            self.display_param.append('loss_content')
-            self.display_param.append('loss_context')
             self.display_param.append('lr')
             self.display_param.append('lr_f_s')
             self.display_param.append('netD')
@@ -285,7 +299,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.display_param.append('no_flip')
             self.display_param.append('no_rotate')
             self.display_param.append('percept_loss')
-            self.display_param.append('use_w_context')
             self.display_param.append('wplus')
             self.display_param.append('wskip')
             
@@ -625,6 +638,38 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         self.loss_d_dec.backward()
 
+    def backward_mix(self):
+        cur_z_fake_A = self.z_fake_A_pool.query(self.z_fake_A).clone().detach()
+        cur_z_fake_B = self.z_fake_B_pool.query(self.z_fake_B).clone().detach()
+        
+        #cur_n_fake_A = self.n_fake_A_pool.query(self.n_fake_A).clone().detach()
+        #cur_n_fake_B = self.n_fake_B_pool.query(self.n_fake_B).clone().detach()
+
+        cur_z_fake_A_2 = self.z_fake_A_pool.query(self.z_fake_A).clone().detach()
+        cur_z_fake_B_2 = self.z_fake_B_pool.query(self.z_fake_B).clone().detach()
+
+        #cur_n_fake_A_2 = self.n_fake_A_pool.query(self.n_fake_A).clone().detach()
+        #cur_n_fake_B_2 = self.n_fake_B_pool.query(self.n_fake_B).clone().detach()
+
+        self.fake_B_mix,_ =self.netDecoderG_A([cur_z_fake_B,cur_z_fake_B_2],input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)
+
+        self.fake_A_mix,_ =self.netDecoderG_B([cur_z_fake_A,cur_z_fake_A_2],input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)
+        
+        self.fake_pred_g_loss_A_mix = self.netDiscriminatorDecoderG_A(self.fake_A_mix)
+        self.loss_g_nonsaturating_A_mix = self.g_nonsaturating_loss(self.fake_pred_g_loss_A_mix)
+        
+        self.fake_pred_g_loss_B_mix = self.netDiscriminatorDecoderG_B(self.fake_B_mix)
+        self.loss_g_nonsaturating_B_mix = self.g_nonsaturating_loss(self.fake_pred_g_loss_B_mix)
+        
+        self.loss_g_nonsaturating_mix = self.loss_g_nonsaturating_A_mix + self.loss_g_nonsaturating_B_mix
+
+        self.loss_g_nonsaturating_mix.backward()
+        
+        #log_size = int(math.log(self.opt.decoder_size, 2))
+        #n_latent = self.log_size * 2 - 2
+
+        #inject_index = random.randint(1, self.n_latent - 1)
+
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward
@@ -639,6 +684,11 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
         self.backward_G()             # calculate gradients for G_A and G_B
         self.optimizer_G.step()       # update G_A and G_B's weights
+
+        if self.opt.style_mix_every !=0 :
+            self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
+            self.backward_mix()             # calculate gradients for G_A and G_B
+            self.optimizer_G.step()       # update G_A and G_B's weights
 
         self.set_requires_grad([self.netf_s], True)
         # f_s
