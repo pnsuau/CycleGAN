@@ -275,9 +275,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.display_param.append('gpu_ids')
             self.display_param.append('lambda_G')
             self.display_param.append('lambda_identity')
-            self.display_param.append('lambda_w_context')
-            self.display_param.append('loss_content')
-            self.display_param.append('loss_context')
             self.display_param.append('lr')
             self.display_param.append('lr_f_s')
             self.display_param.append('netD')
@@ -285,22 +282,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.display_param.append('no_flip')
             self.display_param.append('no_rotate')
             self.display_param.append('percept_loss')
-            self.display_param.append('use_w_context')
+
             self.display_param.append('wplus')
             self.display_param.append('wskip')
             
-            #if opt.D_noise:   
-                #self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
-                #                                   kornia.augmentation.RandomHorizontalFlip(p=0.5),
-   
-   #                                                kornia.color.AdjustBrightness(np.random.uniform(0.0,0.1)),
-    #                                               kornia.color.AdjustContrast(np.random.uniform(0.9,1.0)),
-                                                   #kornia.color.AdjustSaturation(np.random.uniform(0.9,1.1)),
-                                                   #kornia.color.AdjustHue(np.random.uniform(-0.5,0.5)),
-                                                   #kornia.color.AdjustGamma(np.random.uniform(0.9,1.1)),
-     #                                              kornia.filters.GaussianBlur2d((5,5),(10.0,10.0)))
-
-     
      
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'
