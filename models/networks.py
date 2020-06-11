@@ -443,7 +443,6 @@ class ResnetGenerator(nn.Module):
                 n_feat = 1024 # 256
 
                 to_w = [nn.Linear(n_feat,512)] # 512 = sty2 image output size
-                to_w += [nn.Tanh()]
                 self.to_w = nn.Sequential(*to_2)
                 self.conv = nn.Conv2d(ngf*mult,1, kernel_size=1)
 
