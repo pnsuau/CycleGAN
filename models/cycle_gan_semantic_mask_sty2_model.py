@@ -300,18 +300,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.display_param.append('wplus')
             self.display_param.append('wskip')
             
-            #if opt.D_noise:   
-                #self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
-                #                                   kornia.augmentation.RandomHorizontalFlip(p=0.5),
-   
-   #                                                kornia.color.AdjustBrightness(np.random.uniform(0.0,0.1)),
-    #                                               kornia.color.AdjustContrast(np.random.uniform(0.9,1.0)),
-                                                   #kornia.color.AdjustSaturation(np.random.uniform(0.9,1.1)),
-                                                   #kornia.color.AdjustHue(np.random.uniform(-0.5,0.5)),
-                                                   #kornia.color.AdjustGamma(np.random.uniform(0.9,1.1)),
-     #                                              kornia.filters.GaussianBlur2d((5,5),(10.0,10.0)))
-
-     
      
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'
