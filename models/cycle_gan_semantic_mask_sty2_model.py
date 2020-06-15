@@ -49,7 +49,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
             parser.add_argument('--lambda_G', type=float, default=1.0, help='weight for generator loss')
             parser.add_argument('--out_mask', action='store_true', help='use loss out mask')
-            parser.add_argument('--lambda_out_mask', type=float, default=10.0, help='weight for loss out mask')
+            parser.add_argument('--lambda_out_mask', type=float, default=10.0, help='weight for loss out mask)')
             parser.add_argument('--loss_out_mask', type=str, default='L1', help='loss mask')
             parser.add_argument('--charbonnier_eps', type=float, default=1e-6, help='Charbonnier loss epsilon value')
             parser.add_argument('--train_f_s_B', action='store_true', help='if true f_s will be trained not only on domain A but also on domain B')
@@ -74,6 +74,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--load_weigth_decoder', action='store_true')
             parser.add_argument('--percept_loss', action='store_true', help='whether to use perceptual loss for reconstruction and identity')
             parser.add_argument('--randomize_noise', action='store_true', help='whether to use random noise in sty2 decoder')
+
+            parser.add_argument('--w_loss', action='store_true')
+            parser.add_argument('--lambda_w_loss', type=float, default=10.0)
     
         return parser
     
@@ -100,6 +103,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if self.opt.d_reg_every != 0:
             losses += ['grad_pen_A','grad_pen_B']#,'d_dec_reg_A', 'd_dec_reg_B']
+
+        if opt.w_loss:
+            losses += ['w_A','w_B']
         
         self.loss_names = losses
         self.truncation = opt.truncation
@@ -245,6 +251,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                     self.criterionMask = torch.nn.MSELoss()
                 elif opt.loss_out_mask == 'Charbonnier':
                     self.criterionMask = L1_Charbonnier_loss(opt.charbonnier_eps)
+
+            if opt.w_loss:
+                self.criterion_w =  torch.nn.MSELoss()
                     
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters()),
@@ -552,6 +561,12 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if not self.opt.path_regularize == 0.0 and not self.opt.g_reg_every == 0 and self.niter % self.opt.g_reg_every == 0 :
             self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
+
+        if self.opt.w_loss:
+            self.loss_w_A = self.criterion_w(self.idt_B,self.rec_A) * self.opt.lambda_w_loss
+            self.loss_w_B = self.criterion_w(self.idt_A,self.rec_B) * self.opt.lambda_w_loss
+
+            self.loss_G += self.loss_w_A + self.loss_w_B
         
         self.loss_G.backward()
 
@@ -561,10 +576,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         self.loss_d_dec_A = self.d_logistic_loss(real_pred_A,fake_pred_A).unsqueeze(0)
 
-        #print(self.loss_d_dec_A)
-        
-
-        
         real_pred_B = self.netDiscriminatorDecoderG_B(self.real_B)
         fake_pred_B = self.netDiscriminatorDecoderG_B(self.fake_B_pool.query(self.fake_B))
         self.loss_d_dec_B = self.d_logistic_loss(real_pred_B,fake_pred_B).unsqueeze(0)
