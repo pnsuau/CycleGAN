@@ -2,6 +2,7 @@ import sys
 import torch
 import itertools
 from util.image_pool import ImagePool
+from util.list_pool import ListPool
 from util.losses import L1_Charbonnier_loss
 from .base_model import BaseModel
 from . import networks
@@ -233,11 +234,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.real_A_pool = ImagePool(opt.pool_size)
             self.real_B_pool = ImagePool(opt.pool_size)
 
-            self.z_fake_A_pool = ImagePool(opt.pool_size)
-            self.z_fake_B_pool = ImagePool(opt.pool_size)
-
-            self.n_fake_A_pool = ImagePool(opt.pool_size)
-            self.n_fake_B_pool = ImagePool(opt.pool_size)
+            self.zn_fake_A_pool = ListPool(opt.pool_size)
+            self.zn_fake_B_pool = ListPool(opt.pool_size)
             
             # define loss functions
             if opt.D_label_smooth:
@@ -410,8 +408,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.pred_fake_B = self.netf_s(self.fake_B)
         self.pfB = F.log_softmax(self.pred_fake_B,dim=d)#.argmax(dim=d)
         self.pfB_max = self.pfB.argmax(dim=d)
-
-
            
     def backward_D_basic(self, netD, real, fake):
         # Real
@@ -588,10 +584,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A_pool.query(self.fake_A))
 
         self.loss_d_dec_A = self.d_logistic_loss(real_pred_A,fake_pred_A).unsqueeze(0)
-
-        #print(self.loss_d_dec_A)
-        
-
         
         real_pred_B = self.netDiscriminatorDecoderG_B(self.real_B)
         fake_pred_B = self.netDiscriminatorDecoderG_B(self.fake_B_pool.query(self.fake_B))
@@ -639,21 +631,16 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.loss_d_dec.backward()
 
     def backward_mix(self):
-        cur_z_fake_A = self.z_fake_A_pool.query(self.z_fake_A).clone().detach()
-        cur_z_fake_B = self.z_fake_B_pool.query(self.z_fake_B).clone().detach()
-        
-        #cur_n_fake_A = self.n_fake_A_pool.query(self.n_fake_A).clone().detach()
-        #cur_n_fake_B = self.n_fake_B_pool.query(self.n_fake_B).clone().detach()
 
-        cur_z_fake_A_2 = self.z_fake_A_pool.query(self.z_fake_A).clone().detach()
-        cur_z_fake_B_2 = self.z_fake_B_pool.query(self.z_fake_B).clone().detach()
+        cur_z_fake_A,cur_n_fake_A = self.zn_fake_A_pool.query(self.z_fake_A,self.n_fake_A)#[0]
+        cur_z_fake_B,cur_n_fake_B = self.zn_fake_B_pool.query(self.z_fake_B,self.n_fake_B)#[0]
 
-        #cur_n_fake_A_2 = self.n_fake_A_pool.query(self.n_fake_A).clone().detach()
-        #cur_n_fake_B_2 = self.n_fake_B_pool.query(self.n_fake_B).clone().detach()
+        cur_z_fake_A_2,cur_n_fake_A_2 = self.zn_fake_A_pool.query(self.z_fake_A,self.n_fake_A)#[0]
+        cur_z_fake_B_2,cur_n_fake_B_2 = self.zn_fake_B_pool.query(self.z_fake_B,self.n_fake_B)#[0]
 
-        self.fake_B_mix,_ =self.netDecoderG_A([cur_z_fake_B,cur_z_fake_B_2],input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)
+        self.fake_B_mix,_ =self.netDecoderG_A([cur_z_fake_B,cur_z_fake_B_2],input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=self.randomize_noise, noise=[cur_n_fake_B,cur_n_fake_B_2])
 
-        self.fake_A_mix,_ =self.netDecoderG_B([cur_z_fake_A,cur_z_fake_A_2],input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)
+        self.fake_A_mix,_ =self.netDecoderG_B([cur_z_fake_A,cur_z_fake_A_2],input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=self.randomize_noise, noise=[cur_n_fake_A,cur_n_fake_A_2])
         
         self.fake_pred_g_loss_A_mix = self.netDiscriminatorDecoderG_A(self.fake_A_mix)
         self.loss_g_nonsaturating_A_mix = self.g_nonsaturating_loss(self.fake_pred_g_loss_A_mix)
@@ -665,11 +652,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         self.loss_g_nonsaturating_mix.backward()
         
-        #log_size = int(math.log(self.opt.decoder_size, 2))
-        #n_latent = self.log_size * 2 - 2
-
-        #inject_index = random.randint(1, self.n_latent - 1)
-
     def optimize_parameters(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration"""
         # forward

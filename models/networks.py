@@ -702,7 +702,7 @@ class NBlock(nn.Module):
         
     def forward(self, x):
         out = self.n_block(x)
-        return torch.reshape(out.unsqueeze(1),(1,1,self.out_feat,self.out_feat))
+        return torch.reshape(out.unsqueeze(1),(x.shape[0],1,self.out_feat,self.out_feat))
         
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""

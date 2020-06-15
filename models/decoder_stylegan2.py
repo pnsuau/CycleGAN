@@ -517,17 +517,22 @@ class Generator(nn.Module):
 
         else:
             latents = []
-            if len(styles) == 2:
+            temp_noise = []
+            if len(styles) == 2: #style mixing
                 if inject_index is None:
                     inject_index = random.randint(1, self.n_latent - 1)
                 #latent =
                 for n in range(0,inject_index):
                     #print('latent size=',styles[n].unsqueeze(1).size())
                     latents.append(styles[0][n].unsqueeze(1))
+                    temp_noise.append(noise[0][n])
                 for n in range(inject_index,self.n_latent):
                     #print('latent size=',styles[n].unsqueeze(1).size())
                     latents.append(styles[1][n].unsqueeze(1))
+                for n in range(inject_index,self.n_latent-1):
+                    temp_noise.append(noise[1][n])
                     
+                noise = temp_noise
             else:
                 if len(styles) != self.n_latent:
                     print('number of styles=',len(styles),' and W space indexes=',self.n_latent,' are different.')
