@@ -594,14 +594,18 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if self.opt.n_loss:
             p = random.uniform(0, 1)
+            temp_n_idt_B = [temp.flatten()for temp in self.n_idt_B]
+            temp_n_idt_A = [temp.flatten()for temp in self.n_idt_A]
+            temp_n_rec_B = [temp.flatten()for temp in self.n_rec_B]
+            temp_n_rec_A = [temp.flatten()for temp in self.n_rec_A]
             if p<0.5:#idt as reference
-                self.loss_n_A = self.criterion_n(torch.cat(self.n_idt_B).clone().detach(),torch.cat(self.n_rec_A)) * self.opt.lambda_n_loss
-                self.loss_n_B = self.criterion_n(torch.stack(self.n_idt_A).clone().detach(),torch.stack(self.n_rec_B)) * self.opt.lambda_n_loss
+                self.loss_n_A = self.criterion_n(torch.cat(temp_n_idt_B).clone().detach(),torch.cat(temp_n_rec_A)) * self.opt.lambda_n_loss
+                self.loss_n_B = self.criterion_n(torch.cat(temp_n_idt_A).clone().detach(),torch.cat(temp_n_rec_B)) * self.opt.lambda_n_loss
             else:#rec as reference
-                self.loss_n_A = self.criterion_n(torch.cat(self.n_idt_B),torch.cat(self.n_rec_A).clone().detach()) * self.opt.lambda_n_loss
-                self.loss_n_B = self.criterion_n(torch.stack(self.n_idt_A),torch.stack(self.n_rec_B).clone().detach()) * self.opt.lambda_n_loss
+                self.loss_n_A = self.criterion_n(torch.cat(temp_n_idt_B),torch.cat(temp_n_rec_A).clone().detach()) * self.opt.lambda_n_loss
+                self.loss_n_B = self.criterion_n(torch.cat(temp_n_idt_A),torch.cat(temp_n_rec_B).clone().detach()) * self.opt.lambda_n_loss
 
-            self.loss_G += self.loss_w_A + self.loss_w_B
+            self.loss_G += self.loss_n_A + self.loss_n_B
             
         self.loss_G.backward()
 
