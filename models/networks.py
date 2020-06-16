@@ -253,8 +253,8 @@ def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
 
-def define_discriminatorstylegan2(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,init_weight=True,img_size=128):
-    net = DiscriminatorStyleGAN2(img_size)
+def define_discriminatorstylegan2(init_type='normal', init_gain=0.02, gpu_ids=[], init_weight=True, img_size=128, lightness=1):
+    net = DiscriminatorStyleGAN2(img_size, lightness=lightness)
     #if len(gpu_ids) > 0:
         #assert(torch.cuda.is_available())
         #net.to(gpu_ids[0])
@@ -459,14 +459,16 @@ class ResnetGenerator(nn.Module):
                 #    )
                 #self.to_w = nn.Sequential(*wlayers)
             else:
-                #n_feat = 1024 # 256 with mpool
                 n_feat = 2**(2*int(math.log(img_size,2)-2)) # 1024
-                self.n_wplus = (2*int(math.log(img_size,2)-1))
+                self.n_wplus = (2*int(math.log(img_size,2)-1)) #XXX: should use sty2 decoder img size when cycle and decoder do not use identical size
+                #self.n_wplus = 14
                 self.wblocks = nn.ModuleList()
                 for n in range(0,self.n_wplus):
                     self.wblocks += [WBlock(ngf*mult,n_feat,init_type,init_gain,gpu_ids)]
                 self.nblocks = nn.ModuleList()
-                noise_map = [4,8,8,16,16,32,32,64,64,128,128,256,256,512,512,1024,1024] #TODO: res > 128
+                
+                noise_map = [4,8,8,16,16,32,32,64,64,128,128,256,256,512,512,1024,1024]
+
                 for n in range(0,self.n_wplus-1):
                     self.nblocks += [NBlock(ngf*mult,n_feat,noise_map[n],init_type,init_gain,gpu_ids)]
                     
@@ -483,12 +485,8 @@ class ResnetGenerator(nn.Module):
             for bp in self.bpoints:
                 output = (bp(output))
                 res_outputs.append(output)
-            #print('res_outputs size=',len(res_outputs))
-            #sys.exit()
             
         if hasattr(self,'to_w'):
-            #output = self.mpool(output)
-            #output = self.zrelu(output)
             output = self.conv(output).squeeze(dim=1)
             output = torch.flatten(output,1)
             output = self.to_w(output).unsqueeze(dim=0)
@@ -496,22 +494,11 @@ class ResnetGenerator(nn.Module):
         elif hasattr(self,'wblocks'):
             outputs = []
             noutputs = []
-            #print('len=',len(self.wconv2))
-            #for n in range(0,len(self.wconv2d)):
-            #    output1 = self.mpool(output)
-            #    output1 = self.wconv2d[n](output1).squeeze(dim=1)
-            #    output1 = torch.flatten(output1,1)
-            #    output1 = self.to_zs[n](output1)
-            #    outputs.append(output1.unsqueeze(dim=0))
             if not self.wskip:
                 for wc in self.wblocks:
-                    #print(type(wc))
                     outputs.append(wc(output))
-                #print('nblocks size=',len(self.nblocks))
                 for nc in self.nblocks:
                     noutputs.append(nc(output))
-                #print('done with noutputs')
-                #sys.exit()
             else:
                 nou = 0
                 for o in res_outputs: # skip connections to latent heads
@@ -526,9 +513,6 @@ class ResnetGenerator(nn.Module):
         else:
             return output
 
-    #def bpoint_hook(module, input, output):
-    #    self.bpoints.append(output)
-        
 class ResnetGenerator_attn(nn.Module):
     # initializers
     def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False):
@@ -691,7 +675,7 @@ class NBlock(nn.Module):
     def __init__(self, dim, n_feat, out_feat, init_type='normal', init_gain=0.02, gpu_ids=[]):
         super(NBlock, self).__init__()
         self.out_feat = out_feat
-        if out_feat <= 32: # size of input #TODO: other sizes
+        if out_feat <= 32: # size of input
             self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
             self.lin = nn.Linear(n_feat,out_feat**2)
             n_block = []
@@ -699,8 +683,11 @@ class NBlock(nn.Module):
             self.n_block = init_net(nn.Sequential(*n_block), init_type, init_gain, gpu_ids)
         else:
             self.n_block = []
+            self.n_block = [nn.Conv2d(256,64,kernel_size=3,stride=1,padding=1),
+                            nn.InstanceNorm2d(1),
+                            nn.ReLU(True)]
             self.n_block += [nn.Upsample((out_feat,out_feat))]
-            self.n_block += [nn.Conv2d(256,1,kernel_size=1)]
+            self.n_block += [nn.Conv2d(64,1,kernel_size=1)]
             self.n_block += [nn.Flatten()]
             self.n_block = init_net(nn.Sequential(*self.n_block), init_type, init_gain, gpu_ids)
                     

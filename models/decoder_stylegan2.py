@@ -448,6 +448,7 @@ class Generator(nn.Module):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
+        self.tanh = torch.nn.Tanh()
 
     def make_noise(self):
         device = self.input.input.device
@@ -551,7 +552,7 @@ class Generator(nn.Module):
 
             i += 2
 
-        image = skip
+        image = self.tanh(skip)
 
         if return_latents:
             return image, latent
@@ -631,7 +632,7 @@ class ResBlock(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, size, channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
+    def __init__(self, size, channel_multiplier=2, blur_kernel=[1, 3, 3, 1], lightness=1):
         super().__init__()
 
         channels = {
@@ -649,11 +650,11 @@ class Discriminator(nn.Module):
         convs = [ConvLayer(3, channels[size], 1)]
 
         log_size = int(math.log(size, 2))
-
+        
         in_channel = channels[size]
 
         for i in range(log_size, 2, -1):
-            out_channel = channels[2 ** (i - 1)]
+            out_channel = int(channels[2 ** (i - 1)]/lightness) # / 4 -> 6M params instead of 30M
 
             convs.append(ResBlock(in_channel, out_channel, blur_kernel))
 
