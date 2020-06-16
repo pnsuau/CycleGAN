@@ -74,6 +74,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--load_weight_decoder', action='store_true')
             parser.add_argument('--percept_loss', action='store_true', help='whether to use perceptual loss for reconstruction and identity')
             parser.add_argument('--randomize_noise', action='store_true', help='whether to use random noise in sty2 decoder')
+            parser.add_argument('--D_lightness', type=int, default=1, help='sty2 discriminator lightness, 1: normal, then 2, 4, 8 for less parameters')
     
         return parser
     
@@ -204,10 +205,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.model_names += [nameDGA,nameDGB]
     
         print('define dis dec')
-        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size=self.opt.crop_size)
+        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size=self.opt.crop_size,lightness=opt.D_lightness)
         self.model_names += ['DiscriminatorDecoderG_A']
 
-        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size=self.opt.crop_size)
+        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size=self.opt.crop_size,lightness=opt.D_lightness)
         self.model_names += ['DiscriminatorDecoderG_B']
             
         self.netf_s = networks.define_f(opt.input_nc, nclasses=opt.semantic_nclasses, 
