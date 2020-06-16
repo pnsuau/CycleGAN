@@ -743,7 +743,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         return noises
 
     def mixing_noise(self,batch, latent_dim, prob, device):
-        log_size = int(math.log(128, 2))
+        log_size = int(math.log(self.opt.crop_size, 2))
         n_latent = log_size * 2 - 2
         temp = random.random()
         #temp=0.95
