@@ -77,6 +77,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
             parser.add_argument('--w_loss', action='store_true')
             parser.add_argument('--lambda_w_loss', type=float, default=10.0)
+
+            parser.add_argument('--n_loss', action='store_true')
+            parser.add_argument('--lambda_n_loss', type=float, default=10.0)
+
     
         return parser
     
@@ -106,7 +110,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if opt.w_loss:
             losses += ['w_A','w_B']
-        
+
+        if opt.n_loss:
+            losses += ['n_A','n_B']
+
         self.loss_names = losses
         self.truncation = opt.truncation
         self.randomize_noise = opt.randomize_noise
@@ -127,9 +134,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         
         visual_names_seg_B = ['input_B_label','gt_pred_B','pfA_max']
         
-        
-            
-
         visual_names_out_mask = ['real_A_out_mask','fake_B_out_mask','real_B_out_mask','fake_A_out_mask']
 
         visual_names_mask = ['fake_B_mask','fake_A_mask']
@@ -254,7 +258,11 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
             if opt.w_loss:
                 self.criterion_w =  torch.nn.MSELoss()
-                    
+
+            if opt.n_loss:
+                self.criterion_n =  torch.nn.MSELoss()
+        
+                
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -563,11 +571,28 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
 
         if self.opt.w_loss:
-            self.loss_w_A = self.criterion_w(self.idt_B,self.rec_A) * self.opt.lambda_w_loss
-            self.loss_w_B = self.criterion_w(self.idt_A,self.rec_B) * self.opt.lambda_w_loss
+            p = random.uniform(0, 1)
+            if p<0.5:#idt as reference
+                self.loss_w_A = self.criterion_w(torch.stack(self.z_idt_B).clone().detach(),torch.stack(self.z_rec_A)) * self.opt.lambda_w_loss
+                self.loss_w_B = self.criterion_w(torch.stack(self.z_idt_A).clone().detach(),torch.stack(self.z_rec_B)) * self.opt.lambda_w_loss
+            else:#rec as reference
+                self.loss_w_A = self.criterion_w(torch.stack(self.z_idt_B),torch.stack(self.z_rec_A).clone().detach()) * self.opt.lambda_w_loss
+                self.loss_w_B = self.criterion_w(torch.stack(self.z_idt_A),torch.stack(self.z_rec_B).clone().detach()) * self.opt.lambda_w_loss
+
+            self.loss_G += self.loss_w_A + self.loss_w_B
+
+        if self.opt.n_loss:
+            p = random.uniform(0, 1)
+            if p<0.5:#idt as reference
+                self.loss_n_A = self.criterion_n(torch.cat(self.n_idt_B).clone().detach(),torch.cat(self.n_rec_A)) * self.opt.lambda_n_loss
+                self.loss_n_B = self.criterion_n(torch.stack(self.n_idt_A).clone().detach(),torch.stack(self.n_rec_B)) * self.opt.lambda_n_loss
+            else:#rec as reference
+                self.loss_n_A = self.criterion_n(torch.cat(self.n_idt_B),torch.cat(self.n_rec_A).clone().detach()) * self.opt.lambda_n_loss
+                self.loss_n_B = self.criterion_n(torch.stack(self.n_idt_A),torch.stack(self.n_rec_B).clone().detach()) * self.opt.lambda_n_loss
 
             self.loss_G += self.loss_w_A + self.loss_w_B
         
+            
         self.loss_G.backward()
 
     def backward_discriminator_decoder(self):
