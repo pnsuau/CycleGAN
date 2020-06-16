@@ -157,10 +157,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         print('define gen')
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.crop_size)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=opt.crop_size,img_size_dec=opt.decoder_size)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.crop_size)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=opt.crop_size,img_size_dec=opt.decoder_size)
 
         # Define stylegan2 decoder
         print('define decoder')
@@ -326,7 +326,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=self.randomize_noise,return_latents=True, noise=self.n_fake_B)
         if self.opt.decoder_size > self.opt.crop_size:
             self.fake_B = F.interpolate(self.fake_B,self.opt.crop_size)
-        
+            
         if self.isTrain:
             #self.netDecoderG_B.eval()
             if self.rec_noise:
