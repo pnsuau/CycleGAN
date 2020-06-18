@@ -225,6 +225,14 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.netf_s = networks.define_f(opt.input_nc, nclasses=opt.semantic_nclasses, 
                                         init_type=opt.init_type, init_gain=opt.init_gain,
                                         gpu_ids=self.gpu_ids, fs_light=opt.fs_light)
+
+        self.netDiscriminatorw_B = networks.define_discriminator_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
+
+        self.model_names += ['Discriminatorw_B']
+        
+        self.netDiscriminatorw_A = networks.define_discriminator_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
+
+        self.model_names += ['Discriminatorw_A']
  
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
@@ -263,7 +271,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
             if opt.n_loss:
                 self.criterion_n =  torch.nn.MSELoss()
-        
+
+            self.criterion_disc_w = torch.nn.BCEWithLogitsLoss()
                 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters()),
@@ -610,8 +619,21 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.loss_n_B = self.criterion_n(torch.cat(temp_n_idt_A),torch.cat(temp_n_rec_B).clone().detach()) * self.opt.lambda_n_loss
 
             self.loss_G += self.loss_n_A + self.loss_n_B
+
+        self.pred_w_fake_A = self.netDiscriminatorw_A(torch.stack(self.z_fake_A))
+        self.pred_w_rec_A = self.netDiscriminatorw_A(torch.stack(self.z_rec_A))
+        self.pred_w_idt_A = self.netDiscriminatorw_A(torch.stack(self.z_idt_A))
         
-            
+        self.pred_w_fake_B = self.netDiscriminatorw_B(torch.stack(self.z_fake_B))
+        self.pred_w_rec_B = self.netDiscriminatorw_A(torch.stack(self.z_rec_B))
+        self.pred_w_idt_A = self.netDiscriminatorw_A(torch.stack(self.z_idt_A))
+        
+        self.criterion_disc_w(self.pred_z_fake_A,torch.ones_like(self.pred_z_fake_A).to(self.device))
+        self.criterion_disc_w(self.pred_z_fake_B,torch.ones_like(self.pred_z_fake_B).to(self.device))
+
+        self.criterion_disc_w(self.pred_z_idt_A,torch.ones_like(self.pred_z_idt_A).to(self.device))
+        self.criterion_disc_w(self.pred_z_idt_B,torch.ones_like(self.pred_z_idt_B).to(self.device))
+        
         self.loss_G.backward()
 
     def backward_discriminator_decoder(self):

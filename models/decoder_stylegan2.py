@@ -448,7 +448,7 @@ class Generator(nn.Module):
             in_channel = out_channel
 
         self.n_latent = self.log_size * 2 - 2
-        self.tanh = torch.nn.Tanh()
+        #self.tanh = torch.nn.Tanh()
 
     def make_noise(self):
         device = self.input.input.device
@@ -552,8 +552,9 @@ class Generator(nn.Module):
 
             i += 2
 
-        image = self.tanh(skip)
-
+        #image = self.tanh(skip)
+        image = skip
+        
         if return_latents:
             return image, latent
 

@@ -243,6 +243,11 @@ def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights
     net = Discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='')
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
+def define_discriminator_w(pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=True):
+    net = Discriminator_w()
+    return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
+
+
 def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,size=512,init_weight=True):
     net = GeneratorStyleGAN2(size,512,8)
     #if len(gpu_ids) > 0:
@@ -669,6 +674,15 @@ class WBlock(nn.Module):
         
     def forward(self, x):
         out = self.w_block(x)
+        return out
+
+class Discriminator_w(nn.Module):
+    def __init__(self, init_type='normal', init_gain=0.02, gpu_ids=[]):
+        super(Discriminator_w, self).__init__()
+        model = [nn.Flatten(),nn.utils.spectral_norm(nn.Linear(12*512,1)),nn.LeakyReLU(0.2,True)]
+        self.model = init_net(nn.Sequential(*model), init_type, init_gain, gpu_ids)
+    def forward(self, x):
+        out = self.model(x.permute(1,0,2))
         return out
 
 class NBlock(nn.Module):
