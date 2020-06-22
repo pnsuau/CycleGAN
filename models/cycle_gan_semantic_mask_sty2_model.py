@@ -623,6 +623,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         
         self.loss_cam = self.criterion_disc_w(self.pred_w_fake_A,torch.ones_like(self.pred_w_fake_A).to(self.device)) * self.opt.lambda_cam
         self.loss_cam += self.criterion_disc_w(self.pred_w_fake_B,torch.ones_like(self.pred_w_fake_B).to(self.device))* self.opt.lambda_cam
+        self.loss_cam += self.criterion_disc_w(self.pred_w_rec_B,torch.ones_like(self.pred_w_rec_B).to(self.device))* self.opt.lambda_cam
+        self.loss_cam += self.criterion_disc_w(self.pred_w_rec_A,torch.ones_like(self.pred_w_rec_A).to(self.device))* self.opt.lambda_cam
 
         self.loss_cam += self.criterion_disc_w(self.pred_w_idt_A,torch.zeros_like(self.pred_w_idt_A).to(self.device)) * self.opt.lambda_cam
         self.loss_cam += self.criterion_disc_w(self.pred_w_idt_B,torch.zeros_like(self.pred_w_idt_B).to(self.device)) * self.opt.lambda_cam
