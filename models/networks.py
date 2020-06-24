@@ -435,9 +435,9 @@ class ResnetGenerator(nn.Module):
                                                            bias=use_bias),use_spectral),
                           norm_layer(int(ngf * mult / 2)),
                           nn.ReLU(True)]
-                model += [nn.ReflectionPad2d(3)]
-                model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
-                model += [nn.Tanh()]
+            model += [nn.ReflectionPad2d(3)]
+            model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+            model += [nn.Tanh()]
         else:
             if wplus == False:
                 n_feat = 1024 # 256
