@@ -17,6 +17,10 @@ import random
 import math
 from torch import distributed as dist
 
+
+from scipy import linalg
+
+
 class CycleGANSemanticMaskSty2Model(BaseModel):
     #def name(self):
     #    return 'CycleGANModel'
@@ -84,6 +88,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--D_lightness', type=int, default=1, help='sty2 discriminator lightness, 1: normal, then 2, 4, 8 for less parameters')
 
             parser.add_argument('--lambda_cam', type=float, default=10.0)
+            parser.add_argument('--dims', type=float, default=2048)
+
 
     
         return parser
@@ -120,6 +126,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         losses += ['cam']
 
+        losses += ['fid_A','fid_B']
+
         self.loss_names = losses
         self.truncation = opt.truncation
         self.randomize_noise = opt.randomize_noise
@@ -151,7 +159,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         if opt.out_mask :
             self.visual_names += visual_names_out_mask
-
+        
         # specify the models you want to save to the disk. The program will call base_model.save_networks and base_model.load_networks
         if self.isTrain:
             self.model_names = ['G_A', 'G_B', 'f_s']
@@ -230,22 +238,24 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                                         init_type=opt.init_type, init_gain=opt.init_gain,
                                         gpu_ids=self.gpu_ids, fs_light=opt.fs_light)
 
-        self.netDiscriminatorw_B = networks.define_discriminator_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
+        self.netDiscriminatorw_B = networks.define_discriminator_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size_dec=self.opt.decoder_size)
 
         self.model_names += ['Discriminatorw_B']
         
-        self.netDiscriminatorw_A = networks.define_discriminator_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2)
+        self.netDiscriminatorw_A = networks.define_discriminator_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size_dec=self.opt.decoder_size)
 
         self.model_names += ['Discriminatorw_A']
- 
+
+        self.netFID = networks.define_FID(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,dims=opt.dims)
+        
         if self.isTrain:
             if opt.lambda_identity > 0.0:  # only works when input and output images have the same number of channels
                 assert(opt.input_nc == opt.output_nc)
             self.fake_A_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             self.fake_B_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             self.real_A_pool = ImagePool(opt.pool_size)
-            self.real_B_pool = ImagePool(opt.pool_size)
-                
+            self.real_B_pool = ImagePool(opt.pool_size)            
+            
             # define loss functions
             if opt.D_label_smooth:
                 target_real_label = 0.9
@@ -335,8 +345,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.input_B_label = input['B_label'].to(self.device).squeeze(1) # beniz: unused
             #self.image_paths = input['B_paths'] # Hack!! forcing the labels to corresopnd to B domain
 
-
-    def forward(self):
+    def forward(self):       
         self.z_fake_B, self.n_fake_B = self.netG_A(self.real_A)
 
         d = 1
@@ -625,13 +634,13 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.loss_n_B = self.criterion_n(torch.cat(temp_n_idt_A),torch.cat(temp_n_rec_B).clone().detach()) * self.opt.lambda_n_loss
 
             self.loss_G += self.loss_n_A + self.loss_n_B
-
+        
         self.pred_w_fake_A = self.netDiscriminatorw_A(torch.stack(self.z_fake_A))
-        #self.pred_w_rec_A = self.netDiscriminatorw_A(torch.stack(self.z_rec_A))
+        self.pred_w_rec_A = self.netDiscriminatorw_A(torch.stack(self.z_rec_A))
         self.pred_w_idt_A = self.netDiscriminatorw_A(torch.stack(self.z_idt_A))
         
         self.pred_w_fake_B = self.netDiscriminatorw_B(torch.stack(self.z_fake_B))
-        #self.pred_w_rec_B = self.netDiscriminatorw_A(torch.stack(self.z_rec_B))
+        self.pred_w_rec_B = self.netDiscriminatorw_A(torch.stack(self.z_rec_B))
         self.pred_w_idt_B = self.netDiscriminatorw_B(torch.stack(self.z_idt_B))
         
         self.loss_cam = self.criterion_disc_w(self.pred_w_fake_A,torch.ones_like(self.pred_w_fake_A).to(self.device)) * self.opt.lambda_cam
@@ -719,11 +728,18 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.optimizer_f_s.step()
 
         self.optimizer_D_Decoder.zero_grad()
-        self.niter = self.niter +1
         self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], True)
         self.backward_discriminator_decoder()
         self.optimizer_D_Decoder.step()
         self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], False)
+
+        if self.niter % 100 == 0:
+            print('fid calculated',self.niter)
+            self.calculate_current_FID_parameters_datasets()
+            self.calculate_current_fid()
+
+        #print(self.niter)
+        self.niter = self.niter +1
 
     def gaussian(self, in_tensor):
         noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, self.stddev).cuda() + in_tensor
@@ -841,3 +857,159 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         gradients = gradients.view(batch_size, -1)
         return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+
+    def calculate_FID_parameters_datasets(self,dataset, batch_size=50,
+                    cuda=False, verbose=False):
+        dims=self.opt.dims
+        self.netFID.eval()
+
+        features_A = []
+        features_B = []
+        temp = 0
+        for data in dataset:
+            #if temp %1000 == 0:
+                #print(temp)
+            self.set_input(data)
+            
+            feat_A = self.netFID(self.real_A)[0].view(self.real_A.shape[0], -1)
+            feat_B = self.netFID(self.real_B)[0].view(self.real_B.shape[0], -1)
+
+            feat_A_arr = feat_A.cpu().data.numpy().reshape(feat_A.size(0), -1)
+            feat_B_arr = feat_B.cpu().data.numpy().reshape(feat_A.size(0), -1)
+            
+            features_A.append(feat_A_arr[0])
+            features_B.append(feat_B_arr[0])
+            temp += 1
+            if temp>1000:
+                break
+
+        #print('type feat A', type(features_A))
+        #print('type feat A[0]', type(features_A[0]))
+        
+        features_A = np.array(features_A)
+        features_B = np.array(features_B)
+        
+        #print('featuresA shape',features_A.shape)
+        #print('featuresB shape',features_B.shape)
+        
+        self.mean_A = np.mean(features_A,axis=0)
+        self.mean_B = np.mean(features_B,axis=0)
+
+        self.cov_A = np.cov(features_A, rowvar=False)
+        self.cov_B = np.cov(features_B, rowvar=False)
+
+        #print('self.mean_A',self.mean_A)
+        #print('self.mean_B',self.mean_B)
+        #print('self.cov_A',self.cov_A)
+        #print('self.cov_B',self.cov_B)
+
+        #print('shape')
+        #print('self.mean_A',self.mean_A.shape)
+        #print('self.mean_B',self.mean_B.shape)
+        #print('self.cov_A',self.cov_A.shape)
+        #print('self.cov_B',self.cov_B.shape)
+
+
+    def calculate_current_FID_parameters_datasets(self):
+        dims=self.opt.dims
+        self.netFID.eval()
+
+        #self.fake_A_pool.query(self.fake_A)
+        #self.fake_B_pool.query(self.fake_B)
+        
+        fake_A_list = self.fake_A_pool.get_all()
+        fake_B_list = self.fake_B_pool.get_all()
+        
+        features_A = []
+        features_B = []
+
+        for data in fake_A_list:
+            feat_A = self.netFID(data)[0].view(data.shape[0], -1)
+            feat_A_arr = feat_A.cpu().data.numpy().reshape(feat_A.size(0), -1)
+            features_A.append(feat_A_arr[0])
+            
+        for data in fake_B_list:
+            feat_B = self.netFID(data)[0].view(data.shape[0], -1)
+            feat_B_arr = feat_B.cpu().data.numpy().reshape(feat_A.size(0), -1)
+            features_B.append(feat_B_arr[0])
+
+        features_A = np.array(features_A)
+        features_B = np.array(features_B)
+
+        #print('len feat A',len(features_A))
+        #print('len feat B',len(features_B))
+        
+        self.current_mean_A = np.mean(features_A,axis=0)
+        self.current_mean_B = np.mean(features_B,axis=0)
+
+        self.current_cov_A = np.cov(features_A, rowvar=False)
+        self.current_cov_B = np.cov(features_B, rowvar=False)
+
+        #print('self.current_mean_A',self.current_mean_A)
+        #print('self.current_mean_B',self.current_mean_B)
+
+        #print('self.current_cov_A',self.current_cov_A)
+        #print('self.current_cov_B',self.current_cov_B)
+
+        #print('shape')
+
+        #print('self.current_mean_A',self.current_mean_A.shape)
+        #print('self.current_mean_B',self.current_mean_B.shape)
+
+        #print('self.current_cov_A',self.current_cov_A.shape)
+        #print('self.current_cov_B',self.current_cov_B.shape)
+
+        
+    def calculate_current_fid(self,eps=1e-6):
+
+        cov_sqrt_A, _ = linalg.sqrtm(self.current_cov_A.dot(self.cov_A), disp=False)
+        cov_sqrt_B, _ = linalg.sqrtm(self.current_cov_B.dot(self.cov_B), disp=False)
+
+        if not np.isfinite(cov_sqrt_A).all():
+            print('product of cov A matrices is singular')
+            offset_A = np.eye(sample_cov_A.shape[0]) * eps
+            cov_sqrt_A = linalg.sqrtm((sample_cov_A + offset_A).dot(real_cov_A + offset_A))
+
+        if not np.isfinite(cov_sqrt_B).all():
+            print('product of cov B matrices is singular')
+            offset_B = np.eye(sample_cov_B.shape[0]) * eps
+            cov_sqrt_B = linalg.sqrtm((sample_cov_B + offset_B).dot(real_cov_B + offset_B))
+
+        if np.iscomplexobj(cov_sqrt_A):
+            print('complex')
+            if not np.allclose(np.diagonal(cov_sqrt_A).imag, 0, atol=1e-3):
+                m_A = np.max(np.abs(cov_sqrt_A.imag))
+
+                raise ValueError(f'Imaginary component {m_A}')
+
+            cov_sqrt_A = cov_sqrt_A.real
+
+        if np.iscomplexobj(cov_sqrt_B):
+            print('complex')
+            if not np.allclose(np.diagonal(cov_sqrt_B).imag, 0, atol=1e-3):
+                m_B = np.max(np.abs(cov_sqrt_B.imag))
+
+                raise ValueError(f'Imaginary component {m_B}')
+
+            cov_sqrt_B = cov_sqrt_B.real
+
+        mean_diff_A = self.current_mean_A - self.mean_A
+        mean_norm_A = mean_diff_A.dot( mean_diff_A)
+
+        trace_A = np.trace(self.current_cov_A) + np.trace(self.cov_A) - 2 * np.trace(cov_sqrt_A)
+
+        self.loss_fid_A = mean_norm_A + trace_A
+        #print('mean diff A',mean_diff_A)
+        #print('mean_norm_A',mean_norm_A)
+        #print('trace mean_norm_A',np.trace(mean_norm_A))
+        #print('trace A', trace_A)
+
+        mean_diff_B = self.current_mean_B - self.mean_B
+        mean_norm_B = mean_diff_B.dot(mean_diff_B)
+
+        trace_B = np.trace(self.current_cov_B) + np.trace(self.cov_B) - 2 * np.trace(cov_sqrt_B)
+
+        self.loss_fid_B = mean_norm_B + trace_B
+
+        #print('fid_A',self.loss_fid_A)
+        #print('fid_B',self.loss_fid_B)

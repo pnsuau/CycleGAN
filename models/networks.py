@@ -13,6 +13,7 @@ from torch.autograd import Variable
 from .UNet import UNet
 from .decoder_stylegan2 import Generator as GeneratorStyleGAN2, Discriminator as DiscriminatorStyleGAN2, EqualLinear as EqualLinear
 import math
+from .FID import InceptionV3
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -243,8 +244,8 @@ def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights
     net = Discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='')
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
-def define_discriminator_w(pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=True):
-    net = Discriminator_w()
+def define_discriminator_w(pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=True,img_size_dec=256):
+    net = Discriminator_w(img_size_dec=img_size_dec)
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
 
@@ -265,7 +266,12 @@ def define_discriminatorstylegan2(init_type='normal', init_gain=0.02, gpu_ids=[]
         #net.to(gpu_ids[0])
         #net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
     
-    return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)    
+    return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
+
+def define_FID(init_type='normal', init_gain=0.02, gpu_ids=[],dims=2048):
+    block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
+    net = InceptionV3([block_idx],normalize_input=False) #the range of images is (-1,1)
+    return init_net(net, init_type, init_gain, gpu_ids,init_weight=False)
 
 ##############################################################################
 # Classes
@@ -677,9 +683,10 @@ class WBlock(nn.Module):
         return out
 
 class Discriminator_w(nn.Module):
-    def __init__(self, init_type='normal', init_gain=0.02, gpu_ids=[]):
+    def __init__(self, init_type='normal', init_gain=0.02, gpu_ids=[],img_size_dec=256):
         super(Discriminator_w, self).__init__()
-        model = [nn.Flatten(),nn.utils.spectral_norm(nn.Linear(12*512,1)),nn.LeakyReLU(0.2,True)]
+        n_w_plus = 2*int(math.log(img_size_dec,2)-1)
+        model = [nn.Flatten(),nn.utils.spectral_norm(nn.Linear(n_w_plus*512,1)),nn.LeakyReLU(0.2,True)]
         self.model = init_net(nn.Sequential(*model), init_type, init_gain, gpu_ids)
     def forward(self, x):
         out = self.model(x.permute(1,0,2))
@@ -708,7 +715,8 @@ class NBlock(nn.Module):
                     
     def forward(self, x):
         out = self.n_block(x)
-        return torch.reshape(out.unsqueeze(1),(1,1,self.out_feat,self.out_feat))
+        batch = x.shape[0]
+        return torch.reshape(out.unsqueeze(1),(batch,1,self.out_feat,self.out_feat))
         
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""
