@@ -81,12 +81,8 @@ class CycleGANSemanticMaskModel(BaseModel):
 
         visual_names_seg_A = ['input_A_label','gt_pred_A','pfB_max']
 
-        
         visual_names_seg_B = ['input_B_label','gt_pred_B','pfA_max']
         
-        
-            
-
         visual_names_out_mask = ['real_A_out_mask','fake_B_out_mask','real_B_out_mask','fake_A_out_mask']
 
         visual_names_mask = ['fake_B_mask','fake_A_mask']
@@ -186,6 +182,21 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.optimizers.append(self.optimizer_D)
             #beniz: not adding optimizers f_s (?)
 
+            #Parameters to display
+            self.display_param.append('lambda_A')
+            self.display_param.append('lambda_B')
+            self.display_param.append('D_lr')
+            self.display_param.append('batch_size')
+            self.display_param.append('gpu_ids')
+            self.display_param.append('lambda_identity')
+            self.display_param.append('lr')
+            self.display_param.append('lr_f_s')
+            self.display_param.append('netD')
+            self.display_param.append('netG')
+            self.display_param.append('no_flip')
+            self.display_param.append('no_rotate')
+
+            
             self.rec_noise = opt.rec_noise
             self.stddev = 0.1
             self.D_noise = opt.D_noise
