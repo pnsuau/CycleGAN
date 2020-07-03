@@ -51,6 +51,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--D_label_smooth', action='store_true', help='whether to use one-sided label smoothing with discriminator')
             parser.add_argument('--rec_noise', action='store_true', help='whether to add noise to reconstruction')
             parser.add_argument('--lambda_g', type=float, default=1)
+            parser.add_argument('--lambda_g_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
         return parser
     
     def __init__(self, opt):
@@ -197,6 +198,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.display_param.append('no_flip')
             self.display_param.append('no_rotate')
             self.display_param.append('lambda_g')
+            self.display_param.append('lambda_g_A')
 
             
             self.rec_noise = opt.rec_noise
@@ -403,7 +405,7 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.loss_G_B = self.criterionGAN(self.netD_B_mask(self.fake_A_mask), True)
         else:
             # GAN loss D_A(G_A(A))
-            self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) * self.opt.lambda_g
+            self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) * self.opt.lambda_g * self.opt.lambda_g_A
             # GAN loss D_B(G_B(B))
             self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True) * self.opt.lambda_g
         # Forward cycle loss
