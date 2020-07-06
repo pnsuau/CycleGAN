@@ -68,6 +68,7 @@ class CycleGANSty2Model(BaseModel):
             parser.add_argument('--lambda_n_loss', type=float, default=10.0)
             parser.add_argument('--cam_loss', action='store_true')
             parser.add_argument('--lambda_cam', type=float, default=10.0)
+            parser.add_argument('--sty2_clamp', action='store_true')
                         
         return parser
     
@@ -133,8 +134,8 @@ class CycleGANSty2Model(BaseModel):
 
         # Define stylegan2 decoder
         print('define decoder')
-        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2)
-        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2)
+        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)
+        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)
         
         # Load pretrained weights stylegan2 decoder
         
@@ -369,7 +370,7 @@ class CycleGANSty2Model(BaseModel):
         if not self.opt.path_regularize == 0.0 and not self.opt.g_reg_every == 0 and self.niter % self.opt.g_reg_every == 0 :
             self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
 
-                if self.opt.w_loss:
+        if self.opt.w_loss:
             p = random.uniform(0, 1)
             if p<0.5:#idt as reference
                 self.loss_w_A = self.criterion_w(torch.stack(self.z_idt_B).clone().detach(),torch.stack(self.z_rec_A)) * self.opt.lambda_w_loss

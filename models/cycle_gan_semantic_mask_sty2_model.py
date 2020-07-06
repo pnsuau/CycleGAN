@@ -84,7 +84,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
             parser.add_argument('--cam_loss', action='store_true')
             parser.add_argument('--lambda_cam', type=float, default=10.0)
-
+            parser.add_argument('--sty2_clamp', action='store_true')
+            
         return parser
     
     def __init__(self, opt):
@@ -171,8 +172,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         # Define stylegan2 decoder
         print('define decoder')
-        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2)
-        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2)
+        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)
+        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)
         
         # Load pretrained weights stylegan2 decoder
         
@@ -633,7 +634,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.loss_cam += self.criterion_disc_w(self.pred_w_idt_A,torch.zeros_like(self.pred_w_idt_A).to(self.device)) * self.opt.lambda_cam
             self.loss_cam += self.criterion_disc_w(self.pred_w_idt_B,torch.zeros_like(self.pred_w_idt_B).to(self.device)) * self.opt.lambda_cam
 
-            self.loss_G += self.loss_cam
+        self.loss_G += self.loss_cam
         
         self.loss_G.backward()
 
