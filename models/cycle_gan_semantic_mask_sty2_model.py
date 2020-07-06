@@ -81,6 +81,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
             parser.add_argument('--n_loss', action='store_true')
             parser.add_argument('--lambda_n_loss', type=float, default=10.0)
+
+            parser.add_argument('--cam_loss', action='store_true')
             parser.add_argument('--lambda_cam', type=float, default=10.0)
 
         return parser
@@ -115,7 +117,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         if opt.n_loss:
             losses += ['n_A','n_B']
 
-        losses += ['cam']
+        if opt.cam_loss:
+            losses += ['cam']
 
         self.loss_names = losses
         self.truncation = opt.truncation
@@ -613,23 +616,24 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
             self.loss_G += self.loss_n_A + self.loss_n_B
 
-        self.pred_w_fake_A = self.netDiscriminatorw_A(torch.stack(self.z_fake_A))
-        #self.pred_w_rec_A = self.netDiscriminatorw_A(torch.stack(self.z_rec_A))
-        self.pred_w_idt_A = self.netDiscriminatorw_A(torch.stack(self.z_idt_A))
+        if self.opt.cam_loss:
+            self.pred_w_fake_A = self.netDiscriminatorw_A(torch.stack(self.z_fake_A))
+            self.pred_w_rec_A = self.netDiscriminatorw_A(torch.stack(self.z_rec_A))
+            self.pred_w_idt_A = self.netDiscriminatorw_A(torch.stack(self.z_idt_A))
+            
+            self.pred_w_fake_B = self.netDiscriminatorw_B(torch.stack(self.z_fake_B))
+            self.pred_w_rec_B = self.netDiscriminatorw_A(torch.stack(self.z_rec_B))
+            self.pred_w_idt_B = self.netDiscriminatorw_B(torch.stack(self.z_idt_B))
         
-        self.pred_w_fake_B = self.netDiscriminatorw_B(torch.stack(self.z_fake_B))
-        #self.pred_w_rec_B = self.netDiscriminatorw_A(torch.stack(self.z_rec_B))
-        self.pred_w_idt_B = self.netDiscriminatorw_B(torch.stack(self.z_idt_B))
-        
-        self.loss_cam = self.criterion_disc_w(self.pred_w_fake_A,torch.ones_like(self.pred_w_fake_A).to(self.device)) * self.opt.lambda_cam
-        self.loss_cam += self.criterion_disc_w(self.pred_w_fake_B,torch.ones_like(self.pred_w_fake_B).to(self.device))* self.opt.lambda_cam
-        self.loss_cam += self.criterion_disc_w(self.pred_w_rec_B,torch.ones_like(self.pred_w_rec_B).to(self.device))* self.opt.lambda_cam
-        self.loss_cam += self.criterion_disc_w(self.pred_w_rec_A,torch.ones_like(self.pred_w_rec_A).to(self.device))* self.opt.lambda_cam
+            self.loss_cam = self.criterion_disc_w(self.pred_w_fake_A,torch.ones_like(self.pred_w_fake_A).to(self.device)) * self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_fake_B,torch.ones_like(self.pred_w_fake_B).to(self.device))* self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_rec_B,torch.ones_like(self.pred_w_rec_B).to(self.device))* self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_rec_A,torch.ones_like(self.pred_w_rec_A).to(self.device))* self.opt.lambda_cam
 
-        self.loss_cam += self.criterion_disc_w(self.pred_w_idt_A,torch.zeros_like(self.pred_w_idt_A).to(self.device)) * self.opt.lambda_cam
-        self.loss_cam += self.criterion_disc_w(self.pred_w_idt_B,torch.zeros_like(self.pred_w_idt_B).to(self.device)) * self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_idt_A,torch.zeros_like(self.pred_w_idt_A).to(self.device)) * self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_idt_B,torch.zeros_like(self.pred_w_idt_B).to(self.device)) * self.opt.lambda_cam
 
-        self.loss_G += self.loss_cam
+            self.loss_G += self.loss_cam
         
         self.loss_G.backward()
 

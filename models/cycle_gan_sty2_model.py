@@ -62,7 +62,13 @@ class CycleGANSty2Model(BaseModel):
             parser.add_argument('--load_weigth_decoder', action='store_true')
             parser.add_argument('--percept_loss', action='store_true', help='whether to use perceptual loss for reconstruction and identity')
             parser.add_argument('--D_lightness', type=int, default=1, help='sty2 discriminator lightness, 1: normal, then 2, 4, 8 for less parameters')
-    
+            parser.add_argument('--w_loss', action='store_true')
+            parser.add_argument('--lambda_w_loss', type=float, default=10.0)
+            parser.add_argument('--n_loss', action='store_true')
+            parser.add_argument('--lambda_n_loss', type=float, default=10.0)
+            parser.add_argument('--cam_loss', action='store_true')
+            parser.add_argument('--lambda_cam', type=float, default=10.0)
+                        
         return parser
     
     def __init__(self, opt):
@@ -83,7 +89,16 @@ class CycleGANSty2Model(BaseModel):
 
         if self.opt.d_reg_every != 0:
             losses += ['grad_pen_A','grad_pen_B']
-                  
+
+        if opt.w_loss:
+            losses += ['w_A','w_B']
+
+        if opt.n_loss:
+            losses += ['n_A','n_B']
+
+        if opt.cam_loss:
+            losses += ['cam']
+            
         self.loss_names = losses
         self.truncation = opt.truncation
         self.r1 = opt.r1
@@ -194,6 +209,12 @@ class CycleGANSty2Model(BaseModel):
             else:
                 self.criterionCycle = torch.nn.L1Loss()
                 self.criterionIdt = torch.nn.L1Loss()
+
+            if opt.w_loss:
+                self.criterion_w =  torch.nn.MSELoss()
+
+            if opt.n_loss:
+                self.criterion_n =  torch.nn.MSELoss()
                 
             # initialize optimizers
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters()),
@@ -347,7 +368,53 @@ class CycleGANSty2Model(BaseModel):
 
         if not self.opt.path_regularize == 0.0 and not self.opt.g_reg_every == 0 and self.niter % self.opt.g_reg_every == 0 :
             self.loss_G += self.loss_weighted_path_A + self.loss_weighted_path_B
+
+                if self.opt.w_loss:
+            p = random.uniform(0, 1)
+            if p<0.5:#idt as reference
+                self.loss_w_A = self.criterion_w(torch.stack(self.z_idt_B).clone().detach(),torch.stack(self.z_rec_A)) * self.opt.lambda_w_loss
+                self.loss_w_B = self.criterion_w(torch.stack(self.z_idt_A).clone().detach(),torch.stack(self.z_rec_B)) * self.opt.lambda_w_loss
+            else:#rec as reference
+                self.loss_w_A = self.criterion_w(torch.stack(self.z_idt_B),torch.stack(self.z_rec_A).clone().detach()) * self.opt.lambda_w_loss
+                self.loss_w_B = self.criterion_w(torch.stack(self.z_idt_A),torch.stack(self.z_rec_B).clone().detach()) * self.opt.lambda_w_loss
+
+            self.loss_G += self.loss_w_A + self.loss_w_B
+
+        if self.opt.n_loss:
+            p = random.uniform(0, 1)
+            temp_n_idt_B = [temp.flatten()for temp in self.n_idt_B]
+            temp_n_idt_A = [temp.flatten()for temp in self.n_idt_A]
+            temp_n_rec_B = [temp.flatten()for temp in self.n_rec_B]
+            temp_n_rec_A = [temp.flatten()for temp in self.n_rec_A]
+            if p<0.5:#idt as reference
+                self.loss_n_A = self.criterion_n(torch.cat(temp_n_idt_B).clone().detach(),torch.cat(temp_n_rec_A)) * self.opt.lambda_n_loss
+                self.loss_n_B = self.criterion_n(torch.cat(temp_n_idt_A).clone().detach(),torch.cat(temp_n_rec_B)) * self.opt.lambda_n_loss
+            else:#rec as reference
+                self.loss_n_A = self.criterion_n(torch.cat(temp_n_idt_B),torch.cat(temp_n_rec_A).clone().detach()) * self.opt.lambda_n_loss
+                self.loss_n_B = self.criterion_n(torch.cat(temp_n_idt_A),torch.cat(temp_n_rec_B).clone().detach()) * self.opt.lambda_n_loss
+
+            self.loss_G += self.loss_n_A + self.loss_n_B
+
+        if self.opt.cam_loss:
+            self.pred_w_fake_A = self.netDiscriminatorw_A(torch.stack(self.z_fake_A))
+            self.pred_w_rec_A = self.netDiscriminatorw_A(torch.stack(self.z_rec_A))
+            self.pred_w_idt_A = self.netDiscriminatorw_A(torch.stack(self.z_idt_A))
+            
+            self.pred_w_fake_B = self.netDiscriminatorw_B(torch.stack(self.z_fake_B))
+            self.pred_w_rec_B = self.netDiscriminatorw_A(torch.stack(self.z_rec_B))
+            self.pred_w_idt_B = self.netDiscriminatorw_B(torch.stack(self.z_idt_B))
         
+            self.loss_cam = self.criterion_disc_w(self.pred_w_fake_A,torch.ones_like(self.pred_w_fake_A).to(self.device)) * self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_fake_B,torch.ones_like(self.pred_w_fake_B).to(self.device))* self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_rec_B,torch.ones_like(self.pred_w_rec_B).to(self.device))* self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_rec_A,torch.ones_like(self.pred_w_rec_A).to(self.device))* self.opt.lambda_cam
+
+            self.loss_cam += self.criterion_disc_w(self.pred_w_idt_A,torch.zeros_like(self.pred_w_idt_A).to(self.device)) * self.opt.lambda_cam
+            self.loss_cam += self.criterion_disc_w(self.pred_w_idt_B,torch.zeros_like(self.pred_w_idt_B).to(self.device)) * self.opt.lambda_cam
+
+        self.loss_G += self.loss_cam
+
+            
         self.loss_G.backward()
 
     def backward_discriminator_decoder(self):
