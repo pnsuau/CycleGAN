@@ -189,17 +189,22 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.rec_noise = opt.rec_noise
             self.stddev = 0.1
             self.D_noise = opt.D_noise
-            #if opt.D_noise:   
-                #self.aug_seq = torch.nn.Sequential(kornia.augmentation.RandomAffine(degrees=[0.0,360.0],translate=[0.15,0.15],scale=[0.8,1.2],shear=[-0.1,0.1]),
-                #                                   kornia.augmentation.RandomHorizontalFlip(p=0.5),
-   
-   #                                                kornia.color.AdjustBrightness(np.random.uniform(0.0,0.1)),
-    #                                               kornia.color.AdjustContrast(np.random.uniform(0.9,1.0)),
-                                                   #kornia.color.AdjustSaturation(np.random.uniform(0.9,1.1)),
-                                                   #kornia.color.AdjustHue(np.random.uniform(-0.5,0.5)),
-                                                   #kornia.color.AdjustGamma(np.random.uniform(0.9,1.1)),
-     #                                              kornia.filters.GaussianBlur2d((5,5),(10.0,10.0)))
 
+            #Parameters to display
+            self.display_param.append('lambda_A')
+            self.display_param.append('lambda_B')
+            self.display_param.append('D_lr')
+            self.display_param.append('batch_size')
+            self.display_param.append('gpu_ids')
+            self.display_param.append('lambda_G')
+            self.display_param.append('lambda_identity')
+            self.display_param.append('lambda_out_mask')
+            self.display_param.append('lr')
+            self.display_param.append('lr_f_s')
+            self.display_param.append('netD')
+            self.display_param.append('netG')
+            self.display_param.append('no_flip')
+            self.display_param.append('no_rotate')
             
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'

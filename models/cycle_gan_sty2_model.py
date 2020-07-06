@@ -241,6 +241,7 @@ class CycleGANSty2Model(BaseModel):
             self.display_param.append('gpu_ids')
             self.display_param.append('lambda_G')
             self.display_param.append('lambda_identity')
+            self.display_param.append('lambda_out_mask')
             self.display_param.append('lr')
             self.display_param.append('netD')
             self.display_param.append('netG')
@@ -249,7 +250,6 @@ class CycleGANSty2Model(BaseModel):
             self.display_param.append('percept_loss')
             self.display_param.append('wplus')
             self.display_param.append('wskip')
-
             
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'
