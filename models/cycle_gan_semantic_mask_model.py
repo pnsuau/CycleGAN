@@ -195,7 +195,6 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.display_param.append('D_lr')
             self.display_param.append('batch_size')
             self.display_param.append('gpu_ids')
-            self.display_param.append('lambda_G')
             self.display_param.append('lambda_identity')
             self.display_param.append('lambda_out_mask')
             self.display_param.append('lr')
