@@ -188,6 +188,22 @@ class CycleGANSemanticMaskModel(BaseModel):
 
             self.rec_noise = opt.rec_noise
             self.D_noise = opt.D_noise
+
+            #Parameters to display
+            self.display_param.append('lambda_A')
+            self.display_param.append('lambda_B')
+            self.display_param.append('D_lr')
+            self.display_param.append('batch_size')
+            self.display_param.append('gpu_ids')
+            self.display_param.append('lambda_G')
+            self.display_param.append('lambda_identity')
+            self.display_param.append('lambda_out_mask')
+            self.display_param.append('lr')
+            self.display_param.append('lr_f_s')
+            self.display_param.append('netD')
+            self.display_param.append('netG')
+            self.display_param.append('no_flip')
+            self.display_param.append('no_rotate')
             
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'

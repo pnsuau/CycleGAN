@@ -372,6 +372,7 @@ class Generator(nn.Module):
         channel_multiplier=2,
         blur_kernel=[1, 3, 3, 1],
         lr_mlp=0.01,
+        clamp=False
     ):
         super().__init__()
 
@@ -552,7 +553,10 @@ class Generator(nn.Module):
 
             i += 2
 
-        image = self.tanh(skip)
+        if not self.clamp:
+            image = skip
+        else:
+            image = self.tanh(skip)
 
         if return_latents:
             return image, latent

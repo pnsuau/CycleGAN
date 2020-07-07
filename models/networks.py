@@ -243,8 +243,8 @@ def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights
     net = Discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='')
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
-def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,size=512,init_weight=True):
-    net = GeneratorStyleGAN2(size,512,8)
+def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,size=512,init_weight=True,clamp=False):
+    net = GeneratorStyleGAN2(size,512,8,clamp=clamp)
     #if len(gpu_ids) > 0:
         #assert(torch.cuda.is_available())
         #net.to(gpu_ids[0])
