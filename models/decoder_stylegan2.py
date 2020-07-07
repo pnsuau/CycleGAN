@@ -380,6 +380,8 @@ class Generator(nn.Module):
 
         self.style_dim = style_dim
 
+        self.clamp = clamp
+        
         layers = [PixelNorm()]
 
         for i in range(n_mlp):
