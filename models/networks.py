@@ -244,8 +244,8 @@ def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights
     net = Discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='')
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
-def define_discriminator_w(pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=True,img_size_dec=256):
-    net = Discriminator_w(img_size_dec=img_size_dec)
+def define_classifier_w(pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=True,img_size_dec=256):
+    net = classifier_w(img_size_dec=img_size_dec)
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
 
@@ -682,9 +682,9 @@ class WBlock(nn.Module):
         out = self.w_block(x)
         return out
 
-class Discriminator_w(nn.Module):
+class classifier_w(nn.Module):
     def __init__(self, init_type='normal', init_gain=0.02, gpu_ids=[],img_size_dec=256):
-        super(Discriminator_w, self).__init__()
+        super(classifier_w, self).__init__()
         n_w_plus = 2*int(math.log(img_size_dec,2)-1)
         model = [nn.Flatten(),nn.utils.spectral_norm(nn.Linear(n_w_plus*512,1)),nn.LeakyReLU(0.2,True)]
         self.model = init_net(nn.Sequential(*model), init_type, init_gain, gpu_ids)

@@ -238,13 +238,13 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                                         init_type=opt.init_type, init_gain=opt.init_gain,
                                         gpu_ids=self.gpu_ids, fs_light=opt.fs_light)
 
-        self.netDiscriminatorw_B = networks.define_discriminator_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size_dec=self.opt.decoder_size)
+        self.netClassifierw_B = networks.define_classifier_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size_dec=self.opt.decoder_size)
 
-        self.model_names += ['Discriminatorw_B']
+        self.model_names += ['Classifierw_B']
         
-        self.netDiscriminatorw_A = networks.define_discriminator_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size_dec=self.opt.decoder_size)
+        self.netClassifierw_A = networks.define_classifier_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size_dec=self.opt.decoder_size)
 
-        self.model_names += ['Discriminatorw_A']
+        self.model_names += ['Classifierw_A']
 
         self.netFID = networks.define_FID(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,dims=opt.dims)
         
@@ -289,7 +289,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             self.criterion_disc_w = torch.nn.BCEWithLogitsLoss()
                 
             # initialize optimizers
-            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters(),self.netDiscriminatorw_A.parameters(),self.netDiscriminatorw_B.parameters()),
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters(),self.netDecoderG_A.parameters(), self.netDecoderG_B.parameters(),self.netClassifierw_A.parameters(),self.netClassifierw_B.parameters()),
                                                 lr=opt.lr, betas=(opt.beta1, 0.999))
 
             self.optimizer_f_s = torch.optim.Adam(self.netf_s.parameters(), lr=opt.lr_f_s, betas=(opt.beta1, 0.999))
@@ -635,13 +635,13 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
             self.loss_G += self.loss_n_A + self.loss_n_B
         
-        self.pred_w_fake_A = self.netDiscriminatorw_A(torch.stack(self.z_fake_A))
-        self.pred_w_rec_A = self.netDiscriminatorw_A(torch.stack(self.z_rec_A))
-        self.pred_w_idt_A = self.netDiscriminatorw_A(torch.stack(self.z_idt_A))
+        self.pred_w_fake_A = self.netClassifierw_A(torch.stack(self.z_fake_A))
+        self.pred_w_rec_A = self.netClassifierw_A(torch.stack(self.z_rec_A))
+        self.pred_w_idt_A = self.netClassifierw_A(torch.stack(self.z_idt_A))
         
-        self.pred_w_fake_B = self.netDiscriminatorw_B(torch.stack(self.z_fake_B))
-        self.pred_w_rec_B = self.netDiscriminatorw_A(torch.stack(self.z_rec_B))
-        self.pred_w_idt_B = self.netDiscriminatorw_B(torch.stack(self.z_idt_B))
+        self.pred_w_fake_B = self.netClassifierw_B(torch.stack(self.z_fake_B))
+        self.pred_w_rec_B = self.netClassifierw_A(torch.stack(self.z_rec_B))
+        self.pred_w_idt_B = self.netClassifierw_B(torch.stack(self.z_idt_B))
         
         self.loss_cam = self.criterion_disc_w(self.pred_w_fake_A,torch.ones_like(self.pred_w_fake_A).to(self.device)) * self.opt.lambda_cam
         self.loss_cam += self.criterion_disc_w(self.pred_w_fake_B,torch.ones_like(self.pred_w_fake_B).to(self.device))* self.opt.lambda_cam
