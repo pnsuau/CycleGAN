@@ -250,15 +250,18 @@ class CycleGANSty2Model(BaseModel):
             self.display_param.append('gpu_ids')
             self.display_param.append('lambda_G')
             self.display_param.append('lambda_identity')
-            self.display_param.append('lambda_out_mask')
             self.display_param.append('lr')
             self.display_param.append('netD')
             self.display_param.append('netG')
             self.display_param.append('no_flip')
             self.display_param.append('no_rotate')
             self.display_param.append('percept_loss')
+            self.display_param.append('n_loss')
+            self.display_param.append('w_loss')
+            self.display_param.append('cam_loss')
             self.display_param.append('wplus')
             self.display_param.append('wskip')
+            self.display_param.append('lambda_cam')
             
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'
@@ -407,7 +410,7 @@ class CycleGANSty2Model(BaseModel):
 
         if self.opt.cam_loss:
             self.pred_w_fake_A = self.netCamClassifier_w_A(torch.stack(self.z_fake_A))
-            self.pred_w_rec_A = self.netCamClassieir_w_A(torch.stack(self.z_rec_A))
+            self.pred_w_rec_A = self.netCamClassifier_w_A(torch.stack(self.z_rec_A))
             self.pred_w_idt_A = self.netCamClassifier_w_A(torch.stack(self.z_idt_A))
             
             self.pred_w_fake_B = self.netCamClassifier_w_B(torch.stack(self.z_fake_B))
