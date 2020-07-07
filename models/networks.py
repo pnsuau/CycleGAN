@@ -243,6 +243,10 @@ def define_discriminator(input_dim=4096, output_dim=2, pretrained=False, weights
     net = Discriminator(input_dim=4096, output_dim=2, pretrained=False, weights_init='')
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
+def define_classifier_w(pretrained=False, weights_init='', init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=True,img_size_dec=256):
+    net = Classifier_w(img_size_dec=img_size_dec)
+    return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
+
 def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,size=512,init_weight=True,clamp=False):
     net = GeneratorStyleGAN2(size,512,8,clamp=clamp)
     #if len(gpu_ids) > 0:
@@ -668,7 +672,7 @@ class WBlock(nn.Module):
     def forward(self, x):
         out = self.w_block(x)
         return out
-
+    
 class NBlock(nn.Module):
     """Define a linear block for N"""
     def __init__(self, dim, n_feat, out_feat, init_type='normal', init_gain=0.02, gpu_ids=[]):
@@ -754,6 +758,17 @@ class ResnetBlock(nn.Module):
         return out
 
 
+class Classifier_w(nn.Module):                                                                             
+    def __init__(self, init_type='normal', init_gain=0.02, gpu_ids=[],img_size_dec=256):
+        super(Classifier_w, self).__init__()
+        n_w_plus = 2*int(math.log(img_size_dec,2)-1)
+        model = [nn.Flatten(),nn.utils.spectral_norm(nn.Linear(n_w_plus*512,1)),nn.LeakyReLU(0.2,True)]
+        self.model = init_net(nn.Sequential(*model), init_type, init_gain, gpu_ids)
+        
+    def forward(self, x):
+        out = self.model(x.permute(1,0,2))
+        return out
+    
 class UnetGenerator(nn.Module):
     """Create a Unet-based generator"""
 
@@ -784,8 +799,7 @@ class UnetGenerator(nn.Module):
     def forward(self, input):
         """Standard forward"""
         return self.model(input)
-
-
+    
 class UnetSkipConnectionBlock(nn.Module):
     """Defines the Unet submodule with skip connection.
         X -------------------identity----------------------
