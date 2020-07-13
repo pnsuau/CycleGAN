@@ -127,10 +127,10 @@ class CycleGANSty2Model(BaseModel):
         print('define gen')
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.decoder_size)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.crop_size,img_size_dec=opt.decoder_size)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.decoder_size)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids, decoder=False, wplus=opt.wplus, wskip=opt.wskip,img_size=self.opt.crop_size,img_size_dec=opt.decoder_size)
 
         # Define stylegan2 decoder
         print('define decoder')
