@@ -40,6 +40,7 @@ class BaseModel(ABC):
         self.save_dir = os.path.join(opt.checkpoints_dir, opt.name)  # save all the checkpoints to save_dir
         if opt.preprocess != 'scale_width':  # with [scale_width], input images might have different sizes, which hurts the performance of cudnn.benchmark.
             torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.deterministic = False
         self.loss_names = []
         self.model_names = []
         self.visual_names = []

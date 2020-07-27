@@ -133,7 +133,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=Tru
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=True, wskip=False, init_weight=True, img_size=128,img_size_dec=128):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=True, wskip=False, init_weight=True, img_size=128, img_size_dec=128):
     """Create a generator
 
     Parameters:
@@ -173,7 +173,9 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
     elif netG == 'mobile_resnet_9blocks':
         from .modules.resnet_architecture.mobile_resnet_generator import MobileResnetGenerator
         net = MobileResnetGenerator(input_nc, output_nc, ngf=ngf, norm_layer=norm_layer,
-                                    dropout_rate=0, n_blocks=9) #XXX: non sty2 for now
+                                    dropout_rate=0, n_blocks=9, decoder=decoder, wplus=wplus,
+                                    init_type=init_type, init_gain=init_gain, gpu_ids=gpu_ids,
+                                    img_size=img_size, img_size_dec=img_size_dec)
     elif netG == 'unet_128':
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
@@ -411,19 +413,19 @@ class ResnetGenerator(nn.Module):
         self.decoder = decoder
         self.wplus = wplus
         self.wskip = wskip
+        head = []
+        model = []
         if type(norm_layer) == functools.partial:
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
-        model = [nn.ReflectionPad2d(3),
+        fl = [nn.ReflectionPad2d(3),
                  spectral_norm(nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),use_spectral),
                  norm_layer(ngf),
                  nn.ReLU(True)]
-        head = [nn.ReflectionPad2d(3),
-                 spectral_norm(nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),use_spectral),
-                 norm_layer(ngf),
-                 nn.ReLU(True)]
+        head += fl
+        model += fl
         
         n_downsampling = 2
         for i in range(n_downsampling):  # add downsampling layers
@@ -438,7 +440,6 @@ class ResnetGenerator(nn.Module):
         for i in range(n_blocks):       # add ResNet blocks
 
             resblockl = [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
-            #bpoints += resblockl
             model += resblockl
             self.bpoints += resblockl
 
@@ -454,31 +455,16 @@ class ResnetGenerator(nn.Module):
                 model += [nn.ReflectionPad2d(3)]
                 model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
                 model += [nn.Tanh()]
+            self.model = nn.Sequential(*model)
         else:
             if wplus == False:
                 n_feat = 1024 # 256
-
-                to_w = [nn.Linear(n_feat,512)] # 512 = sty2 image output size
-                self.to_w = nn.Sequential(*to_2)
+                to_w = [nn.Linear(n_feat,img_size_dec)] # sty2 image output size
+                self.to_w = nn.Sequential(*to_w)
                 self.conv = nn.Conv2d(ngf*mult,1, kernel_size=1)
-
-                #wlayers = []
-                #style_dim = 512
-                #lr_mlp = 0.01
-                #wlayers.append(EqualLinear(n_feat,style_dim,lr_mul=lr_mlp,activation="fused_lrelu"))
-                #n_mlp = 7
-                #for i in range(n_mlp):
-                #    wlayers.append(
-                #        EqualLinear(
-                #            style_dim, style_dim, lr_mul=lr_mlp, activation='fused_lrelu'
-                #        )
-                #    )
-                #self.to_w = nn.Sequential(*wlayers)
             else:
-                n_feat = 2**(2*int(math.log(img_size,2)-2)) # 1024
-                
-                self.n_wplus = (2*int(math.log(img_size_dec,2)-1)) #XXX: should use sty2 decoder img size when cycle and decoder do not use identical size
-                #self.n_wplus = 14
+                n_feat = 2**(2*int(math.log(img_size,2)-2))
+                self.n_wplus = (2*int(math.log(img_size_dec,2)-1))
                 self.wblocks = nn.ModuleList()
                 for n in range(0,self.n_wplus):
                     self.wblocks += [WBlock(ngf*mult,n_feat,init_type,init_gain,gpu_ids)]
@@ -486,9 +472,8 @@ class ResnetGenerator(nn.Module):
                 noise_map = [4,8,8,16,16,32,32,64,64,128,128,256,256,512,512,1024,1024]
                 for n in range(0,self.n_wplus-1):
                     self.nblocks += [NBlock(ngf*mult,n_feat,noise_map[n],init_type,init_gain,gpu_ids)]
-                    
-        self.model = nn.Sequential(*model)
-        self.head = nn.Sequential(*head)
+            self.model = nn.Sequential(*model)
+            self.head = nn.Sequential(*head)
         
     def forward(self, input):
         """Standard forward"""
@@ -676,9 +661,11 @@ class WBlock(nn.Module):
     def __init__(self, dim, n_feat, init_type='normal', init_gain=0.02, gpu_ids=[]):
         super(WBlock, self).__init__()
         self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
-        self.lin = nn.Linear(n_feat,512)
+        self.lin1 = nn.Linear(n_feat,32,bias=True)
+        self.lin2 = nn.Linear(32,512,bias=True)
+        #self.lin = nn.Linear(n_feat,512)
         w_block = []
-        w_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin]
+        w_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin1,nn.ReLU(True),self.lin2]
         self.w_block = init_net(nn.Sequential(*w_block), init_type, init_gain, gpu_ids)
         
     def forward(self, x):
@@ -690,7 +677,7 @@ class NBlock(nn.Module):
     def __init__(self, dim, n_feat, out_feat, init_type='normal', init_gain=0.02, gpu_ids=[]):
         super(NBlock, self).__init__()
         self.out_feat = out_feat
-        if out_feat <= 32: # size of input
+        if out_feat < 32: # size of input
             self.conv2d = nn.Conv2d(dim,1,kernel_size=1)
             self.lin = nn.Linear(n_feat,out_feat**2)
             n_block = []
