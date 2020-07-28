@@ -45,7 +45,7 @@ class CycleGANSty2Model(BaseModel):
             parser.add_argument('--lambda_G', type=float, default=1.0, help='weight for generator loss')
             parser.add_argument('--D_noise', action='store_true', help='whether to add instance noise to discriminator inputs')
             parser.add_argument('--D_label_smooth', action='store_true', help='whether to use one-sided label smoothing with discriminator')
-            parser.add_argument('--rec_noise', action='store_true', help='whether to add noise to reconstruction')
+            parser.add_argument('--rec_noise', type=float, default=0.0, help='whether to add noise to reconstruction')
             parser.add_argument('--wplus', action='store_true', help='whether to work in W+ latent space')
             parser.add_argument('--wskip', action='store_true', help='whether to use skip connections to latent wplus heads')
             parser.add_argument('--truncation',type=float,default=1,help='whether to use truncation trick (< 1)')
@@ -281,8 +281,8 @@ class CycleGANSty2Model(BaseModel):
         
         if self.isTrain:
             #self.netDecoderG_B.eval()
-            if self.rec_noise:
-                self.fake_B_noisy1 = self.gaussian(self.fake_B)
+            if self.rec_noise > 0.0:
+                self.fake_B_noisy1 = self.gaussian(self.fake_B, self.rec_noise)
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B)
@@ -291,8 +291,8 @@ class CycleGANSty2Model(BaseModel):
             self.z_fake_A, self.n_fake_A = self.netG_B(self.real_B)
             self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True,noise=self.n_fake_A)
             
-            if self.rec_noise:
-                self.fake_A_noisy1 = self.gaussian(self.fake_A)
+            if self.rec_noise > 0.0:
+                self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A)
@@ -489,9 +489,8 @@ class CycleGANSty2Model(BaseModel):
         self.optimizer_D_Decoder.step()
         #self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], False)
 
-    def gaussian(self, in_tensor):
-        noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, self.stddev).cuda() + in_tensor
-        # noisy_tensor = 2 * (noisy_image - noisy_image.min()) / (noisy_image.max() - noisy_image.min()) - 1
+    def gaussian(self, in_tensor, stddev):
+        noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, stddev).cuda() + in_tensor
         return noisy_image
 
 
