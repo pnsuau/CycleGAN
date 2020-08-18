@@ -631,7 +631,7 @@ class ResnetGenerator_attn(nn.Module):
 class ResnetGenerator_attn2(nn.Module):
     # initializers
     def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[],size=128,nb_mask_input=2):
-        super(ResnetGenerator_attn, self).__init__()
+        super(ResnetGenerator_attn2, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
@@ -688,7 +688,7 @@ class ResnetGenerator_attn2(nn.Module):
         images = []
 
         #for i in range(self.n_wplus - self.nb_mask_input):
-        for i in range(1,9):
+        for i in range(0,9):
             images.append(image[:, 3*i:3*(i+1), :, :])
 
         x_attention = F.relu(self.deconv1_norm_attention(self.deconv1_attention(x)))
@@ -703,7 +703,7 @@ class ResnetGenerator_attn2(nn.Module):
         attentions =[]
         
         #for i in range(self.n_wplus):
-        for i in range(0,9):
+        for i in range(0,10):
             attentions.append(attention[:, i:i+1, :, :].repeat(1, 3, 1, 1))
 
         outputs = []
@@ -714,9 +714,10 @@ class ResnetGenerator_attn2(nn.Module):
         #    else:
         #        outputs.append(images[i-self.nb_mask_input]*attentions[i])
         #output1 = input * attention1
-        for i in range(0,9):
+        for i in range(1,9):
             outputs.append(images[i]*attentions[i])
-
+        outputs.append(input * attentions[9])
+            
         o = outputs[0]
         for i in range(1,9):
             o += outputs[i]
