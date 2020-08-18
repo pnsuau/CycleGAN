@@ -182,6 +182,8 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'resnet_attn':
         net = ResnetGenerator_attn(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral)
+    elif netG == 'resnet_attn_jb':
+        net = ResnetGenerator_attn2(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     #if len(gpu_ids) > 0:
@@ -625,6 +627,101 @@ class ResnetGenerator_attn(nn.Module):
         o=output1 + output2 + output3 + output4 + output5 + output6 + output7 + output8 + output9 + output10
 
         return o#, output1, output2, output3, output4, output5, output6, output7, output8, output9, output10, attention1,attention2,attention3, attention4, attention5, attention6, attention7, attention8,attention9,attention10, image1, image2,image3,image4,image5,image6,image7,image8,image9
+
+class ResnetGenerator_attn2(nn.Module):
+    # initializers
+    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[],size=128,nb_mask_input=2):
+        super(ResnetGenerator_attn, self).__init__()
+        self.input_nc = input_nc
+        self.output_nc = output_nc
+        self.ngf = ngf
+        self.nb = n_blocks
+        self.log_size = int(math.log(size, 2))
+        self.n_wplus = self.log_size * 2 - 2
+        self.nb_mask_input = nb_mask_input
+        self.conv1 = spectral_norm(nn.Conv2d(input_nc, ngf, 7, 1, 0),use_spectral)
+        self.conv1_norm = nn.InstanceNorm2d(ngf)
+        self.conv2 = spectral_norm(nn.Conv2d(ngf, ngf * 2, 3, 2, 1),use_spectral)
+        self.conv2_norm = nn.InstanceNorm2d(ngf * 2)
+        self.conv3 = spectral_norm(nn.Conv2d(ngf * 2, ngf * 4, 3, 2, 1),use_spectral)
+        self.conv3_norm = nn.InstanceNorm2d(ngf * 4)
+
+        self.resnet_blocks = []
+        for i in range(n_blocks):
+            self.resnet_blocks.append(resnet_block_attn(ngf * 4, 3, 1, 1))
+            self.resnet_blocks[i].weight_init(0, 0.02)
+
+        self.resnet_blocks = nn.Sequential(*self.resnet_blocks)
+
+        self.deconv1_content = spectral_norm(nn.ConvTranspose2d(ngf * 4, ngf * 2, 3, 2, 1, 1),use_spectral)
+        self.deconv1_norm_content = nn.InstanceNorm2d(ngf * 2)
+        self.deconv2_content = spectral_norm(nn.ConvTranspose2d(ngf * 2, ngf, 3, 2, 1, 1),use_spectral)
+        self.deconv2_norm_content = nn.InstanceNorm2d(ngf)
+        self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 3 * (self.n_wplus-nb_mask_input), 7, 1, 0),use_spectral)#27 instead of 30
+
+        self.deconv1_attention = spectral_norm(nn.ConvTranspose2d(ngf * 4, ngf * 2, 3, 2, 1, 1),use_spectral)
+        self.deconv1_norm_attention = nn.InstanceNorm2d(ngf * 2)
+        self.deconv2_attention = spectral_norm(nn.ConvTranspose2d(ngf * 2, ngf, 3, 2, 1, 1),use_spectral)
+        self.deconv2_norm_attention = nn.InstanceNorm2d(ngf)
+        self.deconv3_attention = nn.Conv2d(ngf,self.n_wplus, 1, 1, 0)
+        
+        self.tanh = torch.nn.Tanh()
+
+    # weight_init
+    def weight_init(self, mean, std):
+        for m in self._modules:
+            normal_init(self._modules[m], mean, std)
+
+    # forward method
+    def forward(self, input):
+        x = F.pad(input, (3, 3, 3, 3), 'reflect')
+        x = F.relu(self.conv1_norm(self.conv1(x)))
+        x = F.relu(self.conv2_norm(self.conv2(x)))
+        x = F.relu(self.conv3_norm(self.conv3(x)))
+        x = self.resnet_blocks(x)
+        x_content = F.relu(self.deconv1_norm_content(self.deconv1_content(x)))
+        x_content = F.relu(self.deconv2_norm_content(self.deconv2_content(x_content)))
+        x_content = F.pad(x_content, (3, 3, 3, 3), 'reflect')
+        content = self.deconv3_content(x_content)
+        image = self.tanh(content)
+
+        images = []
+
+        #for i in range(self.n_wplus - self.nb_mask_input):
+        for i in range(1,9):
+            images.append(image[:, 3*i:3*(i+1), :, :])
+
+        x_attention = F.relu(self.deconv1_norm_attention(self.deconv1_attention(x)))
+        x_attention = F.relu(self.deconv2_norm_attention(self.deconv2_attention(x_attention)))
+        # x_attention = F.pad(x_attention, (3, 3, 3, 3), 'reflect')
+        # print(x_attention.size()) [1, 64, 256, 256]
+        attention = self.deconv3_attention(x_attention)
+
+        softmax_ = torch.nn.Softmax(dim=1)
+        attention = softmax_(attention)
+
+        attentions =[]
+        
+        #for i in range(self.n_wplus):
+        for i in range(0,9):
+            attentions.append(attention[:, i:i+1, :, :].repeat(1, 3, 1, 1))
+
+        outputs = []
+
+        #for i in range(self.n_wplus):
+        #    if i < self.nb_mask_input:
+        #        outputs.append(input*attentions[i])
+        #    else:
+        #        outputs.append(images[i-self.nb_mask_input]*attentions[i])
+        #output1 = input * attention1
+        for i in range(0,9):
+            outputs.append(images[i]*attentions[i])
+
+        o = outputs[0]
+        for i in range(1,9):
+            o += outputs[i]
+        return o
+            
     
 class resnet_block_attn(nn.Module):
     def __init__(self, channel, kernel, stride, padding):
