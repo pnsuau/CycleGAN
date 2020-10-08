@@ -133,7 +133,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[],init_weight=Tru
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=True, wskip=False, init_weight=True, img_size=128, img_size_dec=128):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[], decoder=True, wplus=True, wskip=False, init_weight=True, img_size=128, img_size_dec=128,nb_attn = 10,nb_mask_input=2):
     """Create a generator
 
     Parameters:
@@ -183,13 +183,14 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
     elif netG == 'resnet_attn':
         net = ResnetGenerator_attn(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral)
     elif netG == 'resnet_attn_jb':
-        net = ResnetGenerator_attn2(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral)
+        net = ResnetGenerator_attn2(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral,nb_attn = nb_attn,nb_mask_input=nb_mask_input)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     #if len(gpu_ids) > 0:
         #assert(torch.cuda.is_available())
         #net.to(gpu_ids[0])
         #net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs
+    print('init type before',init_type)
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
 
 
@@ -630,14 +631,13 @@ class ResnetGenerator_attn(nn.Module):
 
 class ResnetGenerator_attn2(nn.Module):
     # initializers
-    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[],size=128,nb_mask_input=2):
+    def __init__(self, input_nc, output_nc, ngf=64, n_blocks=9, use_spectral=False, init_type='normal', init_gain=0.02, gpu_ids=[],size=128,nb_attn = 10,nb_mask_input=1): #nb_attn : nombre de masques d'attention, nb_mask_input : nb de masques d'attention qui vont etre appliqués a l'input
         super(ResnetGenerator_attn2, self).__init__()
         self.input_nc = input_nc
         self.output_nc = output_nc
         self.ngf = ngf
         self.nb = n_blocks
-        self.log_size = int(math.log(size, 2))
-        self.n_wplus = self.log_size * 2 - 2
+        self.nb_attn = nb_attn
         self.nb_mask_input = nb_mask_input
         self.conv1 = spectral_norm(nn.Conv2d(input_nc, ngf, 7, 1, 0),use_spectral)
         self.conv1_norm = nn.InstanceNorm2d(ngf)
@@ -656,14 +656,14 @@ class ResnetGenerator_attn2(nn.Module):
         self.deconv1_content = spectral_norm(nn.ConvTranspose2d(ngf * 4, ngf * 2, 3, 2, 1, 1),use_spectral)
         self.deconv1_norm_content = nn.InstanceNorm2d(ngf * 2)
         self.deconv2_content = spectral_norm(nn.ConvTranspose2d(ngf * 2, ngf, 3, 2, 1, 1),use_spectral)
-        self.deconv2_norm_content = nn.InstanceNorm2d(ngf)
-        self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 3 * (self.n_wplus-nb_mask_input), 7, 1, 0),use_spectral)#27 instead of 30
+        self.deconv2_norm_content = nn.InstanceNorm2d(ngf)        
+        self.deconv3_content = spectral_norm(nn.Conv2d(ngf, 3 * (self.nb_attn-nb_mask_input), 7, 1, 0),use_spectral)#self.nb_attn-nb_mask_input: nombre d'images générées ou les masques d'attention vont etre appliqués
 
         self.deconv1_attention = spectral_norm(nn.ConvTranspose2d(ngf * 4, ngf * 2, 3, 2, 1, 1),use_spectral)
         self.deconv1_norm_attention = nn.InstanceNorm2d(ngf * 2)
         self.deconv2_attention = spectral_norm(nn.ConvTranspose2d(ngf * 2, ngf, 3, 2, 1, 1),use_spectral)
         self.deconv2_norm_attention = nn.InstanceNorm2d(ngf)
-        self.deconv3_attention = nn.Conv2d(ngf,self.n_wplus, 1, 1, 0)
+        self.deconv3_attention = nn.Conv2d(ngf,self.nb_attn, 1, 1, 0)
         
         self.tanh = torch.nn.Tanh()
 
@@ -703,7 +703,7 @@ class ResnetGenerator_attn2(nn.Module):
         attentions =[]
         
         #for i in range(self.n_wplus):
-        for i in range(0,10):
+        for i in range(self.nb_attn):
             attentions.append(attention[:, i:i+1, :, :].repeat(1, 3, 1, 1))
 
         outputs = []
@@ -714,12 +714,14 @@ class ResnetGenerator_attn2(nn.Module):
         #    else:
         #        outputs.append(images[i-self.nb_mask_input]*attentions[i])
         #output1 = input * attention1
-        for i in range(1,9):
+        
+        for i in range(self.nb_attn-self.nb_mask_input):
             outputs.append(images[i]*attentions[i])
-        outputs.append(input * attentions[9])
-            
+        for i in range(self.nb_attn-self.nb_mask_input,self.nb_attn):
+            outputs.append(input * attentions[i])
+        
         o = outputs[0]
-        for i in range(1,9):
+        for i in range(1,self.nb_attn):
             o += outputs[i]
         return o
             
