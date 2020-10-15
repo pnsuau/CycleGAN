@@ -4,9 +4,9 @@ import torch
 from torch import nn
 
 from models.modules.mobile_modules import SeparableConv2d
-from models.networks import BaseNetwork
+
 #from models.networks import WBlock, NBlock
-from models.networks import init_net
+from ...networks import init_net
 
 import math
 import sys
@@ -58,7 +58,7 @@ class MobileResnetBlock(nn.Module):
         return out
 
 
-class MobileResnetGenerator(BaseNetwork):
+class MobileResnetGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf, norm_layer=nn.InstanceNorm2d,
                  dropout_rate=0, n_blocks=9, padding_type='reflect', decoder=True,
                  wplus=True, init_type='normal', init_gain=0.02, gpu_ids=[],

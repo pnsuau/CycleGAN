@@ -6,6 +6,7 @@ from . import networks
 from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
+from .modules import loss
 
 class CycleGANSemanticMaskInputModel(BaseModel):
     #def name(self):
@@ -99,7 +100,7 @@ class CycleGANSemanticMaskInputModel(BaseModel):
             self.fake_A_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             self.fake_B_pool = ImagePool(opt.pool_size) # create image buffer to store previously generated images
             # define loss functions
-            self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
+            self.criterionGAN = loss.GANLoss(opt.gan_mode).to(self.device)
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
             #self.criterionf_s = torch.nn.modules.NLLLoss(reduction='mean',reduce = True,size_average=True)
