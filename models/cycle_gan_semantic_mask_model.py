@@ -7,11 +7,11 @@ from . import networks
 from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
-#import kornia.augmentation
+from .modules import loss
 
 class CycleGANSemanticMaskModel(BaseModel):
-    #def name(self):
-    #    return 'CycleGANModel'
+    def name(self):
+        return 'CycleGANSemanticMaskModel'
 
     # new, copied from cyclegansemantic model
     @staticmethod
@@ -50,6 +50,10 @@ class CycleGANSemanticMaskModel(BaseModel):
             parser.add_argument('--D_noise', type=float, default=0.0, help='whether to add instance noise to discriminator inputs')
             parser.add_argument('--D_label_smooth', action='store_true', help='whether to use one-sided label smoothing with discriminator')
             parser.add_argument('--rec_noise', type=float, default=0.0, help='whether to add noise to reconstruction')
+            parser.add_argument('--nb_attn', type=int, default=10, help='number of attention masks')
+            parser.add_argument('--nb_mask_input', type=int, default=1, help='number of attention masks which will be applied on the input image')
+
+
         return parser
     
     def __init__(self, opt):
@@ -84,9 +88,6 @@ class CycleGANSemanticMaskModel(BaseModel):
         
         visual_names_seg_B = ['input_B_label','gt_pred_B','pfA_max']
         
-        
-            
-
         visual_names_out_mask = ['real_A_out_mask','fake_B_out_mask','real_B_out_mask','fake_A_out_mask']
 
         visual_names_mask = ['fake_B_mask','fake_A_mask']
@@ -116,10 +117,10 @@ class CycleGANSemanticMaskModel(BaseModel):
         # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids,nb_attn = opt.nb_attn,nb_mask_input=opt.nb_mask_input)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids,nb_attn = opt.nb_attn,nb_mask_input=opt.nb_mask_input)
 
         if self.isTrain:
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
@@ -158,7 +159,7 @@ class CycleGANSemanticMaskModel(BaseModel):
                 target_real_label = 0.9
             else:
                 target_real_label = 1.0
-            self.criterionGAN = networks.GANLoss(opt.gan_mode,target_real_label=target_real_label).to(self.device)
+            self.criterionGAN = loss.GANLoss(opt.gan_mode,target_real_label=target_real_label).to(self.device)
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
             self.criterionf_s = torch.nn.modules.CrossEntropyLoss()
@@ -180,11 +181,10 @@ class CycleGANSemanticMaskModel(BaseModel):
                 self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),
                                                 lr=opt.D_lr, betas=(opt.beta1, 0.999))
             self.optimizer_f_s = torch.optim.Adam(self.netf_s.parameters(), lr=opt.lr_f_s, betas=(opt.beta1, 0.999))
-            print('f defined')
+            
             self.optimizers = []
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
-            #beniz: not adding optimizers f_s (?)
 
             self.rec_noise = opt.rec_noise
             self.D_noise = opt.D_noise
@@ -222,7 +222,6 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.input_B_label = input['B_label'].to(self.device).squeeze(1) # beniz: unused
             #self.image_paths = input['B_paths'] # Hack!! forcing the labels to corresopnd to B domain
 
-
     def forward(self):
         self.fake_B = self.netG_A(self.real_A)
         d = 1
@@ -245,12 +244,9 @@ class CycleGANSemanticMaskModel(BaseModel):
            
             
             self.gt_pred_A = F.log_softmax(self.pred_real_A,dim= d).argmax(dim=d)
-            #print(self.gt_pred_A.shape)
-            #self.gt_pred_A = self.pred_real_A.argmax(dim=d)
             
-            pred_real_B = self.netf_s(self.real_B)
-            self.gt_pred_B = F.log_softmax(pred_real_B,dim=d).argmax(dim=d)
-            #self.gt_pred_B = pred_real_B.argmax(dim=d)
+            self.pred_real_B = self.netf_s(self.real_B)
+            self.gt_pred_B = F.log_softmax(self.pred_real_B,dim=d).argmax(dim=d)
             
             self.pred_fake_A = self.netf_s(self.fake_A)
             
@@ -276,10 +272,6 @@ class CycleGANSemanticMaskModel(BaseModel):
                 if self.D_noise > 0.0:
                     self.fake_B_noisy = self.gaussian(self.fake_B, self.D_noise)
                     self.real_A_noisy = self.gaussian(self.real_A, self.D_noise)
-                    #self.real_A_mask_in = self.aug_seq(self.real_A_mask_in)
-                    #self.fake_B_mask_in = self.aug_seq(self.fake_B_mask_in)
-                    #self.real_A_mask = self.aug_seq(self.real_A_mask)
-                    #self.fake_B_mask = self.aug_seq(self.fake_B_mask)
                         
                 if hasattr(self, 'input_B_label'):
                 
@@ -287,7 +279,6 @@ class CycleGANSemanticMaskModel(BaseModel):
                     label_B_in = label_B.unsqueeze(1)
                     label_B_inv = torch.tensor(np.ones(label_B.size())).to(self.device) - label_B
                     label_B_inv = label_B_inv.unsqueeze(1)
-                    #label_B_inv = torch.cat ([label_B_inv,label_B_inv,label_B_inv],1)
                     
                     self.real_B_out_mask = self.real_B *label_B_inv
                     self.fake_A_out_mask = self.fake_A *label_B_inv
@@ -300,16 +291,10 @@ class CycleGANSemanticMaskModel(BaseModel):
                     if self.D_noise > 0.0:
                         self.fake_A_noisy = self.gaussian(self.fake_A, self.D_noise)
                         self.real_B_noisy = self.gaussian(self.real_B, self.D_noise)
-                        #self.real_B_mask_in = self.aug_seq(self.real_B_mask_in)
-                        #self.fake_A_mask_in = self.aug_seq(self.fake_A_mask_in)
-                        #self.real_B_mask = self.aug_seq(self.real_B_mask)
-                        #self.fake_A_mask = self.aug_seq(self.fake_A_mask)
                         
         self.pred_fake_B = self.netf_s(self.fake_B)
         self.pfB = F.log_softmax(self.pred_fake_B,dim=d)#.argmax(dim=d)
         self.pfB_max = self.pfB.argmax(dim=d)
-
-
            
     def backward_D_basic(self, netD, real, fake):
         # Real
@@ -369,7 +354,6 @@ class CycleGANSemanticMaskModel(BaseModel):
         self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A_mask_in, fake_A_mask_in)
 
     def backward_G(self):
-        #print('BACKWARD G')
         lambda_idt = self.opt.lambda_identity
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
@@ -386,10 +370,6 @@ class CycleGANSemanticMaskModel(BaseModel):
             self.loss_idt_A = 0
             self.loss_idt_B = 0
 
-        # GAN loss D_A(G_A(A))
-        #self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True) # removed a factor 2...
-        # GAN loss D_B(G_B(B))
-        #self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         if self.disc_in_mask:
             self.loss_G_A_mask = self.criterionGAN(self.netD_A(self.fake_B_mask_in), True)
             self.loss_G_B_mask = self.criterionGAN(self.netD_B(self.fake_A_mask_in), True)
@@ -411,14 +391,12 @@ class CycleGANSemanticMaskModel(BaseModel):
 
         # semantic loss AB
         self.loss_sem_AB = self.criterionf_s(self.pfB, self.input_A_label)
-        #self.loss_sem_AB = self.criterionf_s(self.pred_fake_B, self.gt_pred_A)
 
         # semantic loss BA
         if hasattr(self, 'input_B_label'):
             self.loss_sem_BA = self.criterionf_s(self.pfA, self.input_B_label)#.squeeze(1))
         else:
             self.loss_sem_BA = self.criterionf_s(self.pfA, self.gt_pred_B)#.squeeze(1))
-        #self.loss_sem_BA = self.criterionf_s(self.pred_fake_A, self.pfB) # beniz    
         
         # only use semantic loss when classifier has reasonably low loss
         #if True:

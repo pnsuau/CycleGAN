@@ -18,7 +18,7 @@ You need to implement the following functions:
 import torch
 from .base_model import BaseModel
 from . import networks
-
+from .modules import loss
 
 class TemplateModel(BaseModel):
     @staticmethod
@@ -60,7 +60,7 @@ class TemplateModel(BaseModel):
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, gpu_ids=self.gpu_ids)
         if self.isTrain:  # only defined during training time
             # define your loss functions. You can use losses provided by torch.nn such as torch.nn.L1Loss.
-            # We also provide a GANLoss class "networks.GANLoss". self.criterionGAN = networks.GANLoss().to(self.device)
+            # We also provide a GANLoss class "loss.GANLoss". self.criterionGAN = loss.GANLoss().to(self.device)
             self.criterionLoss = torch.nn.L1Loss()
             # define and initialize optimizers. You can define one optimizer for each network.
             # If two networks are updated at the same time, you can use itertools.chain to group them. See cycle_gan_model.py for an example.

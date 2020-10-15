@@ -15,6 +15,8 @@ import random
 import math
 from torch import distributed as dist
 
+from .modules import loss
+
 class CycleGANSty2Model(BaseModel):
 
     @staticmethod
@@ -206,7 +208,7 @@ class CycleGANSty2Model(BaseModel):
                 target_real_label = 0.9
             else:
                 target_real_label = 1.0
-            self.criterionGAN = networks.GANLoss(opt.gan_mode,target_real_label=target_real_label).to(self.device)
+            self.criterionGAN = loss.GANLoss(opt.gan_mode,target_real_label=target_real_label).to(self.device)
             
             if opt.percept_loss:
                 self.criterionCycle = VGGPerceptualLoss().cuda()
