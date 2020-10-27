@@ -5,7 +5,7 @@ import ntpath
 import time
 from . import util, html
 from subprocess import Popen, PIPE
-
+from PIL import Image
 
 if sys.version_info[0] == 2:
     VisdomExceptionBase = Exception
@@ -238,3 +238,10 @@ class Visualizer():
         print(message)  # print the message
         with open(self.log_name, "a") as log_file:
             log_file.write('%s\n' % message)  # save the message
+
+    def display_img(self,img_path):
+        im = Image.open(img_path)
+        im = np.array(im)
+        im = np.transpose(im, (2,0,1))
+        img_name=img_path.split('/')[-1].split('.')[0]
+        self.vis.image(im,opts=dict(title=self.name + ' ' + img_name))

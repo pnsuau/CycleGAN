@@ -4,6 +4,7 @@ from collections import OrderedDict
 from abc import ABC, abstractmethod
 from . import networks
 from .modules.utils import get_scheduler
+from torchviz import make_dot
 
 class BaseModel(ABC):
     """This class is an abstract base class (ABC) for models.
@@ -246,3 +247,17 @@ class BaseModel(ABC):
             if net is not None:
                 for param in net.parameters():
                     param.requires_grad = requires_grad
+
+    def save_networks_img(self,data):
+        self.set_input(data)
+        paths=[]
+        for name in self.model_names:
+            net = getattr(self, 'net' + name)
+            path=self.opt.checkpoints_dir + self.opt.name +'/networks/' + name
+            if not 'Decoder' in name:
+                temp=net(self.real_A)
+            else:
+                temp=net(self.netG_A(self.real_A).detach()) #decoders take w+ in input
+            make_dot(temp,params=dict(net.named_parameters())).render(path, format='png')
+            paths.append(path)
+        return paths
