@@ -6,7 +6,7 @@ from torch.nn import Linear, Conv2d, BatchNorm2d, PReLU, Sequential, Module
 
 from models.modules.psp.encoders.helpers import get_blocks, Flatten, bottleneck_IR, bottleneck_IR_SE
 from models.modules.stylegan2.decoder_stylegan2 import EqualLinear
-
+from models.modules.resnet_architecture.resnet_generator import WBlock
 
 class GradualStyleBlock(Module):
     def __init__(self, in_c, out_c, spatial):
@@ -32,6 +32,30 @@ class GradualStyleBlock(Module):
         return x
 
 
+class GradualStyleBlockLight(Module):
+    def __init__(self, in_c, out_c, spatial):
+        super(GradualStyleBlockLight, self).__init__()
+        self.out_c = out_c
+        self.spatial = spatial
+        num_pools = int(np.log2(spatial))
+        modules = []
+        modules += [Conv2d(in_c, out_c, kernel_size=3, stride=4, padding=1),
+                    nn.LeakyReLU()]
+        for i in range(num_pools//2 - 1):
+            modules += [
+                Conv2d(out_c, out_c, kernel_size=3, stride=4, padding=1),
+                nn.LeakyReLU()
+            ]
+        self.convs = nn.Sequential(*modules)
+        self.linear = EqualLinear(out_c, out_c, lr_mul=1)
+
+    def forward(self, x):
+        x = self.convs(x)
+        x = x.view(-1, self.out_c)
+        x = self.linear(x)
+        return x
+
+    
 class GradualStyleEncoder(Module):
     def __init__(self, num_layers, mode='ir',input_nc=3, opts=None):
         super(GradualStyleEncoder, self).__init__()
@@ -59,11 +83,11 @@ class GradualStyleEncoder(Module):
         self.middle_ind =5 #7
         for i in range(self.style_count):
             if i < self.coarse_ind:
-                style = GradualStyleBlock(512, 512, 16)
+                style = GradualStyleBlockLight(512, 512, 16)
             elif i < self.middle_ind:
-                style = GradualStyleBlock(512, 512, 32)
+                style = GradualStyleBlockLight(512, 512, 32)
             else:
-                style = GradualStyleBlock(512, 512, 64)
+                style = GradualStyleBlockLight(512, 512, 64)
             self.styles.append(style)
         self.latlayer1 = nn.Conv2d(256, 512, kernel_size=1, stride=1, padding=0)
         self.latlayer2 = nn.Conv2d(128, 512, kernel_size=1, stride=1, padding=0)
@@ -93,6 +117,7 @@ class GradualStyleEncoder(Module):
         latents = []
         modulelist = list(self.body._modules.values())
         for i, l in enumerate(modulelist):
+            #print('x shape',i,x.shape)
             x = l(x)
             if i == 6:
                 c1 = x
@@ -101,17 +126,21 @@ class GradualStyleEncoder(Module):
             elif i == 23:
                 c3 = x
 
+        #print('c3',c3.shape)
         for j in range(self.coarse_ind):
             latents.append(self.styles[j](c3))
 
         p2 = self._upsample_add(c3, self.latlayer1(c2))
+        #print('p2',p2.shape)
         for j in range(self.coarse_ind, self.middle_ind):
             latents.append(self.styles[j](p2))
 
         p1 = self._upsample_add(p2, self.latlayer2(c1))
+        #print('p1',p1.shape)
         for j in range(self.middle_ind, self.style_count):
             latents.append(self.styles[j](p1))
-
+        #print('latent0',latents[0].shape)
+        #print('latent-1',latents[-1].shape)    
         out = torch.stack(latents, dim=1)
         return out, None
 
