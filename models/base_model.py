@@ -46,6 +46,7 @@ class BaseModel(ABC):
         self.model_names = []
         self.visual_names = []
         self.display_param = []
+        self.set_display_param()
         self.optimizers = []
         self.image_paths = []
         self.metric = 0  # used for learning rate policy 'plateau'
@@ -248,6 +249,7 @@ class BaseModel(ABC):
                 for param in net.parameters():
                     param.requires_grad = requires_grad
 
+
     def save_networks_img(self,data):
         self.set_input(data)
         paths=[]
@@ -261,3 +263,11 @@ class BaseModel(ABC):
             make_dot(temp,params=dict(net.named_parameters())).render(path, format='png')
             paths.append(path)
         return paths
+
+    def set_display_param(self,params=None):
+        if params is None:
+            params = vars(self.opt).keys()
+        for param in params:
+            self.display_param.append(param)
+        self.display_param.sort()
+
