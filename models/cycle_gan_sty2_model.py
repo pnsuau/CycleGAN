@@ -339,6 +339,7 @@ class CycleGANSty2Model(BaseModel):
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
+        self.noise_control=True
         self.z_fake_B, self.n_fake_B = self.netG_A(self.real_A)
         #self.z_fake_B=self.z_fake_B[0].unsqueeze(1).shape
         #print(self.z_fake_B.shape)
@@ -353,8 +354,10 @@ class CycleGANSty2Model(BaseModel):
         #print('len2',len(self.z_fake_B[0][0]))
         d = 1
         #self.netDecoderG_A.eval()
-        #self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_fake_B,return_latents=True)
-        self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,return_latents=True)
+        if self.noise_control:
+            self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_fake_B,return_latents=True)
+        else:
+            self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,return_latents=True)
         if self.isTrain:
             #print('reca')
             #self.netDecoderG_B.eval()
@@ -365,13 +368,14 @@ class CycleGANSty2Model(BaseModel):
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B)
-            #self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False, noise=self.n_rec_A)[0]
             temp=[]
             for cur in self.z_rec_A[0]:
                 temp.append(cur.unsqueeze(0))
             self.z_rec_A = temp
-        
-            self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0]
+            if self.noise_control:
+                self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False, noise=self.n_rec_A)[0] 
+            else:
+                self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0]
 
             #print('fakea')
             self.z_fake_A, self.n_fake_A = self.netG_B(self.real_B)
@@ -379,22 +383,27 @@ class CycleGANSty2Model(BaseModel):
             for cur in self.z_fake_A[0]:
                 temp.append(cur.unsqueeze(0))
             self.z_fake_A = temp
-        
-            #self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True,noise=self.n_fake_A)
-            self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)
+
+            if self.noise_control:
+                self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True,noise=self.n_fake_A)
+            else:
+                self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)
             
             if self.rec_noise > 0.0:
                 self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A)
-            #self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False, noise=self.n_rec_B)[0]
+
             temp=[]
             for cur in self.z_rec_B[0]:
                 temp.append(cur.unsqueeze(0))
             self.z_rec_B = temp
-        
-            self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)[0]
+
+            if self.noise_control:
+                self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False, noise=self.n_rec_B)[0]
+            else:
+                self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)[0]
             
     def backward_G(self):
         #print('BACKWARD G')
@@ -410,9 +419,11 @@ class CycleGANSty2Model(BaseModel):
             for cur in self.z_idt_A[0]:
                 temp.append(cur.unsqueeze(0))
             self.z_idt_A = temp
-        
-            #self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_idt_A)[0]
-            self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)[0]
+
+            if self.noise_control:
+                self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_idt_A)[0]
+            else:
+                self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)[0]
             
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             if self.percept_loss:
@@ -424,8 +435,10 @@ class CycleGANSty2Model(BaseModel):
                 temp.append(cur.unsqueeze(0))
             self.z_idt_B = temp
         
-            #self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,noise=self.n_idt_B)[0]
-            self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0]
+            if self.noise_control:
+                self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,noise=self.n_idt_B)[0]
+            else:
+                self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0]
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
             if self.percept_loss:
                 self.loss_idt_B += self.criterionIdt2(self.idt_B, self.real_A) * lambda_A * lambda_idt
@@ -548,6 +561,7 @@ class CycleGANSty2Model(BaseModel):
     def backward_discriminator_decoder(self):
         real_pred_A = self.netDiscriminatorDecoderG_A(self.real_A)
         fake_pred_A = self.netDiscriminatorDecoderG_A(self.fake_A_pool.query(self.fake_A))
+        print(real_pred_A,fake_pred_A)
         self.loss_d_dec_A = self.d_logistic_loss(real_pred_A,fake_pred_A).unsqueeze(0)
 
         real_pred_B = self.netDiscriminatorDecoderG_B(self.real_B)
@@ -589,14 +603,23 @@ class CycleGANSty2Model(BaseModel):
         self.netDecoderG_A.zero_grad()
         self.netDecoderG_B.zero_grad()
         self.optimizer_G.zero_grad()  # set G_A and G_B's gradients to zero
+        #print('11111111111111111111111111111111111111111111111111111111111111111111111111111111111')
+        #print(self.netG_A.module.body[0].res_layer[1].weight.grad)
         self.backward_G()             # calculate gradients for G_A and G_B
+        #print(self.netG_A)
+        #print('2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222')
+        #print(self.netG_A.module.body[0].res_layer[1].weight.grad)
         self.optimizer_G.step()       # update G_A and G_B's weights
 
         # D_A and D_B
         self.optimizer_D_Decoder.zero_grad()
+        #print('¡11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111')
+        #print(self.netDiscriminatorDecoderG_A.module.convs[0][0].weight.grad)
         self.niter = self.niter +1
         self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], True)
         self.backward_discriminator_decoder()
+        #print('1222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222')
+        #print(self.netDiscriminatorDecoderG_A.module.convs[0][0].weight.grad)
         self.optimizer_D_Decoder.step()
         #self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], False)
 

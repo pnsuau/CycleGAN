@@ -149,6 +149,7 @@ class ResnetGenerator(nn.Module):
                 self.nblocks = nn.ModuleList()
                 noise_map = [4,8,8,16,16,32,32,64,64,128,128,256,256,512,512,1024,1024]
                 for n in range(0,self.n_wplus-1):
+                    print(ngf*mult,n_feat)
                     self.nblocks += [NBlock(ngf*mult,n_feat,noise_map[n],init_type,init_gain,gpu_ids)]
             self.model = nn.Sequential(*model)
             self.head = nn.Sequential(*head)

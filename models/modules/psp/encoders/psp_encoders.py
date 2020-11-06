@@ -8,6 +8,8 @@ from models.modules.psp.encoders.helpers import get_blocks, Flatten, bottleneck_
 from models.modules.stylegan2.decoder_stylegan2 import EqualLinear
 from models.modules.resnet_architecture.resnet_generator import WBlock
 
+from ...utils import init_net
+
 class GradualStyleBlock(Module):
     def __init__(self, in_c, out_c, spatial):
         super(GradualStyleBlock, self).__init__()
@@ -92,6 +94,17 @@ class GradualStyleEncoder(Module):
         self.latlayer1 = nn.Conv2d(256, 512, kernel_size=1, stride=1, padding=0)
         self.latlayer2 = nn.Conv2d(128, 512, kernel_size=1, stride=1, padding=0)
 
+        self.nblocks = nn.ModuleList()
+        noise_map = [4,8,8,16,16,32,32,64,64,128,128,256,256,512,512,1024,1024]
+        for n in range(self.style_count-1):
+            if n < self.coarse_ind:
+                n_feat=8**2
+            elif n < self.middle_ind:
+                n_feat=16**2
+            else:
+                n_feat=32**2
+            self.nblocks += [NBlock(n_feat,noise_map[n])]
+
     def _upsample_add(self, x, y):
         '''Upsample and add two feature maps.
         Args:
@@ -115,6 +128,7 @@ class GradualStyleEncoder(Module):
         x = self.input_layer(x)
 
         latents = []
+        noutputs = []
         modulelist = list(self.body._modules.values())
         for i, l in enumerate(modulelist):
             #print('x shape',i,x.shape)
@@ -129,20 +143,24 @@ class GradualStyleEncoder(Module):
         #print('c3',c3.shape)
         for j in range(self.coarse_ind):
             latents.append(self.styles[j](c3))
+            noutputs.append(self.nblocks[j](c3))
 
         p2 = self._upsample_add(c3, self.latlayer1(c2))
         #print('p2',p2.shape)
         for j in range(self.coarse_ind, self.middle_ind):
             latents.append(self.styles[j](p2))
+            noutputs.append(self.nblocks[j](p2))
 
         p1 = self._upsample_add(p2, self.latlayer2(c1))
         #print('p1',p1.shape)
         for j in range(self.middle_ind, self.style_count):
             latents.append(self.styles[j](p1))
+            if j < self.style_count-1:
+                noutputs.append(self.nblocks[j](p1))
         #print('latent0',latents[0].shape)
         #print('latent-1',latents[-1].shape)    
         out = torch.stack(latents, dim=1)
-        return out, None
+        return out, noutputs
 
 
 class BackboneEncoderUsingLastLayerIntoW(Module):
@@ -212,3 +230,28 @@ class BackboneEncoderUsingLastLayerIntoWPlus(Module):
         x = self.linear(x)
         x = x.view(-1, 12, 512) #18 instead of 12
         return x,None
+
+class NBlock(nn.Module):
+    """Define a linear block for N"""
+    def __init__(self, n_feat, out_feat, init_type='normal', init_gain=0.02, gpu_ids=[]):
+        super(NBlock, self).__init__()
+        self.out_feat = out_feat
+        if out_feat < 32: # size of output
+            self.conv2d = nn.Conv2d(512,1,kernel_size=1)
+            self.lin = nn.Linear(n_feat,out_feat**2)
+            n_block = []
+            n_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin]
+            self.n_block = init_net(nn.Sequential(*n_block), init_type, init_gain, gpu_ids)
+        else:
+            self.n_block = []
+            self.n_block = [nn.Conv2d(512,64,kernel_size=3,stride=1,padding=1),
+                            nn.InstanceNorm2d(1),
+                            nn.ReLU(True)]
+            self.n_block += [nn.Upsample((out_feat,out_feat))]
+            self.n_block += [nn.Conv2d(64,1,kernel_size=1)]
+            self.n_block += [nn.Flatten()]
+            self.n_block = init_net(nn.Sequential(*self.n_block), init_type, init_gain, gpu_ids)
+                    
+    def forward(self, x):
+        out = self.n_block(x)
+        return torch.reshape(out.unsqueeze(1),(1,1,self.out_feat,self.out_feat))
