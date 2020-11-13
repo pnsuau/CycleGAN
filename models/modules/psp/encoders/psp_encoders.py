@@ -40,6 +40,7 @@ class GradualStyleBlockLight(Module):
         self.out_c = out_c
         self.spatial = spatial
         num_pools = int(np.log2(spatial))
+        print('num pools',num_pools)
         modules = []
         modules += [Conv2d(in_c, out_c, kernel_size=3, stride=4, padding=1),
                     nn.LeakyReLU()]
@@ -255,3 +256,19 @@ class NBlock(nn.Module):
     def forward(self, x):
         out = self.n_block(x)
         return torch.reshape(out.unsqueeze(1),(1,1,self.out_feat,self.out_feat))
+
+class WBlock(nn.Module):
+    """Define a linear block for W"""
+    def __init__(self, init_type='normal', init_gain=0.02, gpu_ids=[]):
+        super(WBlock, self).__init__()
+        self.conv2d = nn.Conv2d(512,512,kernel_size=1)
+        self.lin1 = nn.Linear(n_feat,32,bias=True)
+        self.lin2 = nn.Linear(32,512,bias=True)
+        #self.lin = nn.Linear(n_feat,512)
+        w_block = []
+        w_block += [self.conv2d,nn.InstanceNorm2d(1),nn.Flatten(),self.lin1,nn.ReLU(True),self.lin2]
+        self.w_block = init_net(nn.Sequential(*w_block), init_type, init_gain, gpu_ids)
+        
+    def forward(self, x):
+        out = self.w_block(x)
+        return out
