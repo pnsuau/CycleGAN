@@ -114,10 +114,10 @@ class MobileResnetGenerator(nn.Module):
                                              bias=use_bias),
                           norm_layer(int(ngf * mult / 2)),
                           nn.ReLU(True)]
-                model += [nn.ReflectionPad2d(3)]
-                model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
-                model += [nn.Tanh()]
-                self.model = nn.Sequential(*model)
+            model += [nn.ReflectionPad2d(3)]
+            model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+            model += [nn.Tanh()]
+            self.model = nn.Sequential(*model)
         else:
             if wplus == False:
                 n_feat = 4096 #1024 # 256
