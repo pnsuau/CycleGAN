@@ -18,6 +18,7 @@ from .modules.UNet_classification import UNet
 from .modules.classifiers import Classifier_w
 from .modules.stylegan2.decoder_stylegan2 import Generator as GeneratorStyleGAN2
 from .modules.stylegan2.decoder_stylegan2 import Discriminator as DiscriminatorStyleGAN2
+from pytorch_fid.inception import InceptionV3
 
 class BaseNetwork(nn.Module):
     def __init__(self):
@@ -152,3 +153,8 @@ def define_decoder(init_type='normal', init_gain=0.02, gpu_ids=[],decoder=False,
 def define_discriminatorstylegan2(init_type='normal', init_gain=0.02, gpu_ids=[], init_weight=True, img_size=128, lightness=1):
     net = DiscriminatorStyleGAN2(img_size, lightness=lightness)    
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
+
+def define_inception(device,dims):
+    block_idx = InceptionV3.BLOCK_INDEX_BY_DIM[dims]
+    model = InceptionV3([block_idx]).to(device)
+    return model
