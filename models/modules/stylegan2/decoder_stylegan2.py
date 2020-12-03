@@ -510,17 +510,22 @@ class Generator(nn.Module):
         #print('len(styles)=',len(styles),' / n_latent=',self.n_latent)
         #print(type(styles))
         #sys.exit()
+        #print('len(styles)',len(styles))
         if len(styles) < 2:
             inject_index = self.n_latent
 
-            if styles[0].ndim < 3:
+            #print('styles[0].ndim',styles[0].ndim)
+            '''if styles[0].ndim < 3:
                 latent = styles[0].unsqueeze(1).repeat(1, inject_index, 1)
 
-            else:
-                latent = styles[0]
+            else:'''
+            if len(styles[0]) != self.n_latent:#w+
+                print('number of styles=',len(styles[0]),' and W space indexes=',self.n_latent,' are different.')
+                sys.exit()
+            latent = styles
 
-        else:
-            if len(styles) != self.n_latent:
+        '''else:
+            if len(styles) != self.n_latent:#w+
                 print('number of styles=',len(styles),' and W space indexes=',self.n_latent,' are different.')
                 sys.exit()
             
@@ -537,9 +542,10 @@ class Generator(nn.Module):
                 #print('latent size=',styles[n].unsqueeze(1).size())
                 latents.append(styles[n].unsqueeze(1))
             latent = torch.cat(latents, 1)
+            print('latent',latent.shape)
             #print('final latent size=',latent.size())
-            #sys.exit()
-            
+            #sys.exit()'''
+
         out = self.input(latent)
         out = self.conv1(out, latent[:, 0], noise=noise[0])
 
