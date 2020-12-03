@@ -186,8 +186,10 @@ class ResnetGenerator(nn.Module):
                     nou += 1
                 for k in range(0,self.n_wplus-nou): # remaining latent heads
                     outputs.append(self.wblocks[nou+k](output))
+                outputs=torch.stack(outputs).unsqueeze(0)
                 for k in range(0,self.n_wplus-nou-1):
                     noutputs.append(self.nblocks[nou+k](output))
+                    
             return outputs, noutputs
         else:
             return output
@@ -431,7 +433,7 @@ class WBlock(nn.Module):
         
     def forward(self, x):
         out = self.w_block(x)
-        return out
+        return out.squeeze(0)
     
 class NBlock(nn.Module):
     """Define a linear block for N"""
