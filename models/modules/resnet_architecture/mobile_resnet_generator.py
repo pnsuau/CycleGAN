@@ -161,6 +161,7 @@ class MobileResnetGenerator(nn.Module):
                 noutputs = []
                 for wc in self.wblocks:
                     outputs.append(wc(output))
+                outputs=torch.stack(outputs).unsqueeze(0)
                 for nc in self.nblocks:
                     noutputs.append(nc(output))
                 return outputs, noutputs
@@ -178,7 +179,7 @@ class WBlock(nn.Module):
         
     def forward(self, x):
         out = self.w_block(x)
-        return out
+        return out.squeeze(0)
     
 class NBlock(nn.Module):
     """Define a linear block for N"""
