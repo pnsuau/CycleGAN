@@ -285,69 +285,34 @@ class CycleGANSty2Model(BaseModel):
     def forward(self):
         self.noise_control=True
         self.z_fake_B, self.n_fake_B = self.netG_A(self.real_A)
-        #self.z_fake_B=self.z_fake_B[0].unsqueeze(1).shape
-        #print(self.z_fake_B.shape)
-        '''temp=[]
-        print('before')
-        print(self.z_fake_B.shape)
-        for cur in self.z_fake_B[0]:
-            #print('cur',cur.unsqueeze(0).shape)
-            temp.append(cur.unsqueeze(0))
-        self.z_fake_B = temp
-        print('after')
-        print('len',len(self.z_fake_B))
-        print('len1',len(self.z_fake_B[0]))
-        print(self.z_fake_B[0].shape)
-        print('len2',len(self.z_fake_B[0][0]))'''
         d = 1
-        #self.netDecoderG_A.eval()
         if self.noise_control:
             self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_fake_B,return_latents=True)
         else:
             self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,return_latents=True)
         if self.isTrain:
-            #print('reca')
-            #self.netDecoderG_B.eval()
             if self.rec_noise > 0.0:
                 self.fake_B_noisy1 = self.gaussian(self.fake_B, self.rec_noise)
-                #print(self.real_A.shape)
-                #print('fakeB')
-                #print(self.fake_B.shape)
-                #print(self.fake_B_noisy1.shape)
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B)
-            temp=[]
-            '''for cur in self.z_rec_A[0]:
-                temp.append(cur.unsqueeze(0))
-            self.z_rec_A = temp'''
             if self.noise_control:
                 self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False, noise=self.n_rec_A)[0] 
             else:
                 self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0]
 
-            #print('fakea')
             self.z_fake_A, self.n_fake_A = self.netG_B(self.real_B)
-            temp=[]
-            '''for cur in self.z_fake_A[0]:
-                temp.append(cur.unsqueeze(0))
-            self.z_fake_A = temp'''
-
+            
             if self.noise_control:
                 self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True,noise=self.n_fake_A)
             else:
                 self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)
-            #print('fakeA',self.fake_A.shape)
+            
             if self.rec_noise > 0.0:
                 self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A)
-
-            temp=[]
-            '''for cur in self.z_rec_B[0]:
-                temp.append(cur.unsqueeze(0))
-            self.z_rec_B = temp'''
 
             if self.noise_control:
                 self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False, noise=self.n_rec_B)[0]
@@ -364,10 +329,6 @@ class CycleGANSty2Model(BaseModel):
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed.
             self.z_idt_A, self.n_idt_A = self.netG_A(self.real_B)
-            temp=[]
-            '''for cur in self.z_idt_A[0]:
-                temp.append(cur.unsqueeze(0))
-            self.z_idt_A = temp'''
 
             if self.noise_control:
                 self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_idt_A)[0]
@@ -379,10 +340,6 @@ class CycleGANSty2Model(BaseModel):
                 self.loss_idt_A += self.criterionIdt2(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed.
             self.z_idt_B, self.n_idt_B = self.netG_B(self.real_A)
-            temp=[]
-            '''for cur in self.z_idt_B[0]:
-                temp.append(cur.unsqueeze(0))
-            self.z_idt_B = temp'''
         
             if self.noise_control:
                 self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,noise=self.n_idt_B)[0]
