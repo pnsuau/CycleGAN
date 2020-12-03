@@ -40,7 +40,6 @@ class GradualStyleBlockLight(Module):
         self.out_c = out_c
         self.spatial = spatial
         num_pools = int(np.log2(spatial))
-        print('num pools',num_pools)
         modules = []
         modules += [Conv2d(in_c, out_c, kernel_size=3, stride=4, padding=1),
                     nn.LeakyReLU()]
@@ -132,7 +131,6 @@ class GradualStyleEncoder(Module):
         noutputs = []
         modulelist = list(self.body._modules.values())
         for i, l in enumerate(modulelist):
-            #print('x shape',i,x.shape)
             x = l(x)
             if i == 6:
                 c1 = x
@@ -141,25 +139,20 @@ class GradualStyleEncoder(Module):
             elif i == 23:
                 c3 = x
 
-        #print('c3',c3.shape)
         for j in range(self.coarse_ind):
             latents.append(self.styles[j](c3))
             noutputs.append(self.nblocks[j](c3))
 
         p2 = self._upsample_add(c3, self.latlayer1(c2))
-        #print('p2',p2.shape)
         for j in range(self.coarse_ind, self.middle_ind):
             latents.append(self.styles[j](p2))
             noutputs.append(self.nblocks[j](p2))
 
         p1 = self._upsample_add(p2, self.latlayer2(c1))
-        #print('p1',p1.shape)
         for j in range(self.middle_ind, self.style_count):
             latents.append(self.styles[j](p1))
             if j < self.style_count-1:
                 noutputs.append(self.nblocks[j](p1))
-        #print('latent0',latents[0].shape)
-        #print('latent-1',latents[-1].shape)    
         out = torch.stack(latents, dim=1)
         return out, noutputs
 
