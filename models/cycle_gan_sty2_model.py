@@ -71,6 +71,7 @@ class CycleGANSty2Model(BaseModel):
             parser.add_argument('--cam_loss', action='store_true')
             parser.add_argument('--lambda_cam', type=float, default=10.0)
             parser.add_argument('--sty2_clamp', action='store_true')
+            parser.add_argument('--not_noise_control', action='store_true')
                         
         return parser
     
@@ -137,7 +138,8 @@ class CycleGANSty2Model(BaseModel):
         # Define stylegan2 decoder
         print('define decoder')
         self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)
-        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)
+        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)        
+
         
         # Load pretrained weights stylegan2 decoder
         
@@ -247,6 +249,8 @@ class CycleGANSty2Model(BaseModel):
             self.niter=0
             self.mean_path_length_A = 0
             self.mean_path_length_B = 0
+
+            self.noise_control=not opt.not_noise_control
             
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'
@@ -257,27 +261,38 @@ class CycleGANSty2Model(BaseModel):
     def forward(self):
         self.z_fake_B, self.n_fake_B = self.netG_A(self.real_A)
         d = 1
-        #self.netDecoderG_A.eval()
-        self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_fake_B,return_latents=True)
-        
+        if self.noise_control:
+            self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_fake_B,return_latents=True)
+        else:
+            self.fake_B,self.latent_fake_B = self.netDecoderG_A(self.z_fake_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,return_latents=True)
         if self.isTrain:
-            #self.netDecoderG_B.eval()
             if self.rec_noise > 0.0:
                 self.fake_B_noisy1 = self.gaussian(self.fake_B, self.rec_noise)
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B)
-            self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False, noise=self.n_rec_A)[0]
-                
+            if self.noise_control:
+                self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B, randomize_noise=False, noise=self.n_rec_A)[0] 
+            else:
+                self.rec_A = self.netDecoderG_B(self.z_rec_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0]
+
             self.z_fake_A, self.n_fake_A = self.netG_B(self.real_B)
-            self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True,noise=self.n_fake_A)
+            
+            if self.noise_control:
+                self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True,noise=self.n_fake_A)
+            else:
+                self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)
             
             if self.rec_noise > 0.0:
                 self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A)
-            self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False, noise=self.n_rec_B)[0]
+
+            if self.noise_control:
+                self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A, randomize_noise=False, noise=self.n_rec_B)[0]
+            else:
+                self.rec_B = self.netDecoderG_A(self.z_rec_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)[0]
             
     def backward_G(self):
         #print('BACKWARD G')
@@ -289,14 +304,22 @@ class CycleGANSty2Model(BaseModel):
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed.
             self.z_idt_A, self.n_idt_A = self.netG_A(self.real_B)
-            self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_idt_A)[0]
+
+            if self.noise_control:
+                self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A,randomize_noise=False,noise=self.n_idt_A)[0]
+            else:
+                self.idt_A = self.netDecoderG_A(self.z_idt_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_A)[0]
             
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             if self.percept_loss:
                 self.loss_idt_A += self.criterionIdt2(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed.
             self.z_idt_B, self.n_idt_B = self.netG_B(self.real_A)
-            self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,noise=self.n_idt_B)[0]
+        
+            if self.noise_control:
+                self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,noise=self.n_idt_B)[0]
+            else:
+                self.idt_B = self.netDecoderG_B(self.z_idt_B,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B)[0]
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
             if self.percept_loss:
                 self.loss_idt_B += self.criterionIdt2(self.idt_B, self.real_A) * lambda_A * lambda_idt
@@ -324,7 +347,7 @@ class CycleGANSty2Model(BaseModel):
         #A
         self.fake_pred_g_loss_A = self.netDiscriminatorDecoderG_A(self.fake_A)
         self.loss_g_nonsaturating_A = self.g_nonsaturating_loss(self.fake_pred_g_loss_A)
-        
+
         if compute_g_regularize:
             self.path_loss_A, self.mean_path_length_A, self.path_lengths_A = self.g_path_regularize(
                 self.fake_A, self.latent_fake_A, self.mean_path_length_A
