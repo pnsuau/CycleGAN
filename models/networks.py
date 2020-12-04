@@ -18,7 +18,10 @@ from .modules.UNet_classification import UNet
 from .modules.classifiers import Classifier_w
 from .modules.stylegan2.decoder_stylegan2 import Generator as GeneratorStyleGAN2
 from .modules.stylegan2.decoder_stylegan2 import Discriminator as DiscriminatorStyleGAN2
+
 from pytorch_fid.inception import InceptionV3
+
+from .modules.psp.encoders import psp_encoders
 
 class BaseNetwork(nn.Module):
     def __init__(self):
@@ -82,6 +85,13 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, us
         net = ResnetGenerator_attn(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral)
     elif netG == 'resnet_attn_jb':
         net = ResnetGenerator_attn2(input_nc, output_nc, ngf, n_blocks=9, use_spectral=use_spectral,nb_attn = nb_attn,nb_mask_input=nb_mask_input)
+    elif netG == 'pyramidal':
+        if decoder==False:
+            net = psp_encoders.GradualStyleEncoder(50, 'ir_se',input_nc)
+            #net = psp_encoders.BackboneEncoderUsingLastLayerIntoWPlus(50, 'ir_se',input_nc)
+        else:
+            print('Pyramidal needs to be used with sty2')
+            sys.exit()
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids,init_weight=init_weight)
