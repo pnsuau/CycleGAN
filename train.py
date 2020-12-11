@@ -75,7 +75,7 @@ if __name__ == '__main__':
                 save_suffix = 'iter_%d' % total_iters if opt.save_by_iter else 'latest'
                 model.save_networks(save_suffix)
 
-            if total_iters % opt.fid_every==0:
+            if total_iters % opt.fid_every==0 and opt.compute_fid:
                 model.compute_fid(epoch,total_iters)
                 if opt.display_id > 0:
                     fids=model.get_current_fids()
