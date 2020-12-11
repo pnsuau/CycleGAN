@@ -75,11 +75,17 @@ if __name__ == '__main__':
                 save_suffix = 'iter_%d' % total_iters if opt.save_by_iter else 'latest'
                 model.save_networks(save_suffix)
 
+            if total_iters % opt.fid_every==0:
+                model.compute_fid(epoch,total_iters)
+                if opt.display_id > 0:
+                    fids=model.get_current_fids()
+                    visualizer.plot_current_fid(epoch, float(epoch_iter) / dataset_size, fids)
+
             iter_data_time = time.time()
         if epoch % opt.save_epoch_freq == 0:              # cache our model every <save_epoch_freq> epochs
             print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
             model.save_networks('latest')
             model.save_networks(epoch)
-
+            
         print('End of epoch %d / %d \t Time Taken: %d sec' % (epoch, opt.n_epochs + opt.n_epochs_decay, time.time() - epoch_start_time))
         model.update_learning_rate()                     # update learning rates at the end of every epoch.

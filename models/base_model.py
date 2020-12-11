@@ -6,6 +6,11 @@ from . import networks
 from .modules.utils import get_scheduler
 from torchviz import make_dot
 
+#for FID
+from data.base_dataset import get_transform
+from pytorch_fid.fid_score import _compute_statistics_of_path,calculate_frechet_distance
+from util.util import save_image,tensor2im
+
 class BaseModel(ABC):
     """This class is an abstract base class (ABC) for models.
     To create a subclass, you need to implement the following five functions:
@@ -50,6 +55,26 @@ class BaseModel(ABC):
         self.optimizers = []
         self.image_paths = []
         self.metric = 0  # used for learning rate policy 'plateau'
+
+        if opt.compute_fid:
+            self.transform = get_transform(opt, grayscale=(opt.input_nc == 1))
+            dims=2048
+            batch=1
+            self.netFid=networks.define_inception(self.gpu_ids[0],dims)
+            pathA=opt.dataroot + '/trainA'
+            self.realmA,self.realsA=_compute_statistics_of_path(pathA, self.netFid, batch, dims, self.gpu_ids[0],self.transform)
+            pathB=opt.dataroot + '/trainB'
+            self.realmB,self.realsB=_compute_statistics_of_path(pathB, self.netFid, batch, dims, self.gpu_ids[0],self.transform)
+
+            pathA=self.save_dir + '/fakeA/'
+            if not os.path.exists(pathA):
+                os.mkdir(pathA)
+
+            pathB=self.save_dir + '/fakeB/'
+            if not os.path.exists(pathB):
+                os.mkdir(pathB)
+            self.fidA=0
+            self.fidB=0
 
     @staticmethod
     def modify_commandline_options(parser, is_train):
@@ -271,3 +296,32 @@ class BaseModel(ABC):
             self.display_param.append(param)
         self.display_param.sort()
 
+
+    def compute_fid(self,n_epoch,n_iter):
+        dims=2048
+        batch=1
+        pathA=self.save_dir + '/fakeA/'+str(n_iter)+'_' +str(n_epoch)
+        if not os.path.exists(pathA):
+            os.mkdir(pathA)
+        for i,temp_fake_A in enumerate(self.fake_A_pool.get_all()):
+            save_image(tensor2im(temp_fake_A), pathA+'/'+str(i)+'.png', aspect_ratio=1.0)
+        self.fakemA,self.fakesA=_compute_statistics_of_path(pathA, self.netFid, batch, dims, self.gpu_ids[0])
+            
+        pathB=self.save_dir + '/fakeB/'+str(n_iter)+'_' +str(n_epoch)
+        if not os.path.exists(pathB):
+            os.mkdir(pathB)
+            
+        for j,temp_fake_B in enumerate(self.fake_B_pool.get_all()):
+            save_image(tensor2im(temp_fake_B), pathB+'/'+str(j)+'.png', aspect_ratio=1.0)
+        self.fakemB,self.fakesB=_compute_statistics_of_path(pathB, self.netFid, batch, dims, self.gpu_ids[0])
+
+        self.fidA=calculate_frechet_distance(self.realmA, self.realsA,self.fakemA,self.fakesA)
+        self.fidB=calculate_frechet_distance(self.realmB, self.realsB,self.fakemB,self.fakesB)
+
+    def get_current_fids(self):
+        
+        fids = OrderedDict()
+        for name in ['fidA','fidB']:
+            if isinstance(name, str):
+                fids[name] = float(getattr(self, name))  # float(...) works for both scalar tensor and float number
+        return fids

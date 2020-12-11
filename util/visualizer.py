@@ -245,3 +245,30 @@ class Visualizer():
         im = np.transpose(im, (2,0,1))
         img_name=img_path.split('/')[-1].split('.')[0]
         self.vis.image(im,opts=dict(title=self.name + ' ' + img_name))
+
+    def plot_current_fid(self, epoch, counter_ratio, fids):
+        """display the current fid values on visdom display: dictionary of fid labels and values
+
+        Parameters:
+            epoch (int)           -- current epoch
+            counter_ratio (float) -- progress (percentage) in the current epoch, between 0 to 1
+            fids (OrderedDict)  -- training fid values stored in the format of (name, float) pairs
+        """
+        if not hasattr(self, 'plot_fid'):
+            self.plot_fid = {'X': [], 'Y': [], 'legend': list(fids.keys())}
+        self.plot_fid['X'].append(epoch + counter_ratio)
+        self.plot_fid['Y'].append([fids[k] for k in self.plot_fid['legend']])
+        X=np.stack([np.array(self.plot_fid['X'])] * len(self.plot_fid['legend']), 1)
+        Y=np.array(self.plot_fid['Y'])
+        try:
+            self.vis.line(
+                Y,
+                X,
+                opts={
+                    'title': self.name + ' fid over time',
+                    'legend': self.plot_fid['legend'],
+                    'xlabel': 'epoch',
+                    'ylabel': 'fid'},
+                win=self.display_id+4)
+        except VisdomExceptionBase:
+            self.create_visdom_connections()

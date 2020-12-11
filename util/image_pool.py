@@ -52,3 +52,6 @@ class ImagePool():
                     return_images.append(image)
         return_images = torch.cat(return_images, 0)   # collect all the images and return
         return return_images
+
+    def get_all(self):
+        return self.images
