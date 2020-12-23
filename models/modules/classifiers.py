@@ -6,9 +6,10 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from .utils import make_layers, get_upsample_filter,_crop
 from torchvision.models import vgg
+import math
 
 class Classifier(nn.Module):
-    def __init__(self, input_nc, ndf, nclasses, norm_layer=nn.BatchNorm2d):
+    def __init__(self, input_nc, ndf, nclasses,img_size, norm_layer=nn.BatchNorm2d):
         super(Classifier, self).__init__()
 
         kw = 3
@@ -19,7 +20,8 @@ class Classifier(nn.Module):
 
         nf_mult = 1
         nf_mult_prev = 1
-        for n in range(3):
+        log_size=int(math.log(img_size,2))
+        for n in range(log_size-2):
             nf_mult_prev = nf_mult
             nf_mult = min(2**n, 8)
             sequence += [
@@ -39,7 +41,6 @@ class Classifier(nn.Module):
     
     def forward(self, x):
         bs = x.size(0)
-        #print(x)
         out = self.after_linear(self.before_linear(x).view(bs, -1))
         return out
 

@@ -131,8 +131,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', use_dropout=False,
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % netD)
     return init_net(net, init_type, init_gain, gpu_ids)
 
-def define_C(output_nc, ndf, init_type='normal', init_gain=0.02, gpu_ids=[], nclasses=10):
-    netC = Classifier(output_nc, ndf, nclasses)
+def define_C(output_nc, ndf,img_size, init_type='normal', init_gain=0.02, gpu_ids=[], nclasses=10):
+    netC = Classifier(output_nc, ndf, nclasses,img_size)
     return init_net(netC, init_type, init_gain, gpu_ids)
 
 def define_f(input_nc, nclasses, init_type='normal', init_gain=0.02, gpu_ids=[], fs_light=False):

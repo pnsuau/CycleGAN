@@ -81,7 +81,7 @@ class CycleGANSemanticModel(BaseModel):
                                             opt.netD,
                                             opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral, #use_sigmoid, 
                                             opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netCLS = networks.define_C(opt.output_nc, opt.ndf, 
+            self.netCLS = networks.define_C(opt.output_nc, opt.ndf,opt.crop_size,
                                             init_type=opt.init_type, init_gain=opt.init_gain,
                                             gpu_ids=self.gpu_ids, nclasses=opt.semantic_nclasses)
  
