@@ -66,20 +66,20 @@ class CycleGANSemanticModel(BaseModel):
         # Code (paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.netG_A = networks.define_G(opt.input_nc, opt.output_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc,
                                         opt.ngf, opt.netG, opt.norm, 
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                        not opt.no_dropout, opt.G_spectral, opt.init_type, opt.init_gain, self.gpu_ids)
 
         if self.isTrain:
             #use_sigmoid = opt.no_lsgan
             self.netD_A = networks.define_D(opt.output_nc, opt.ndf,
                                             opt.netD,
-                                            opt.n_layers_D, opt.norm, #use_sigmoid, 
+                                            opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral, #use_sigmoid, 
                                             opt.init_type, opt.init_gain, self.gpu_ids)
             self.netD_B = networks.define_D(opt.input_nc, opt.ndf,
                                             opt.netD,
-                                            opt.n_layers_D, opt.norm, #use_sigmoid, 
+                                            opt.n_layers_D, opt.norm, opt.D_dropout, opt.D_spectral, #use_sigmoid, 
                                             opt.init_type, opt.init_gain, self.gpu_ids)
             self.netCLS = networks.define_C(opt.output_nc, opt.ndf, 
                                             init_type=opt.init_type, init_gain=opt.init_gain,
