@@ -37,6 +37,7 @@ class CycleGANSemanticModel(BaseModel):
             parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
             parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
+            parser.add_argument('--rec_noise', type=float, default=0.0, help='whether to add noise to reconstruction')
 
         return parser
     
@@ -106,6 +107,8 @@ class CycleGANSemanticModel(BaseModel):
             self.optimizers.append(self.optimizer_D)
             #beniz: not adding optimizers CLS (?)
 
+            self.rec_noise = opt.rec_noise
+
     def set_input(self, input):
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
@@ -121,10 +124,20 @@ class CycleGANSemanticModel(BaseModel):
 
     def forward(self):
         self.fake_B = self.netG_A(self.real_A)
-        self.rec_A = self.netG_B(self.fake_B)
+
+        if self.rec_noise > 0.0:
+            self.fake_B_noisy1 = self.gaussian(self.fake_B, self.rec_noise)
+            self.rec_A= self.netG_B(self.fake_B_noisy1)
+        else:
+            self.rec_A = self.netG_B(self.fake_B)
 
         self.fake_A = self.netG_B(self.real_B)
-        self.rec_B = self.netG_A(self.fake_A)
+
+        if self.rec_noise > 0.0:
+            self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
+            self.rec_B = self.netG_A(self.fake_A_noisy1)
+        else:
+            self.rec_B = self.netG_A(self.fake_A)
 
         if self.isTrain:
            # Forward all four images through classifier
@@ -239,3 +252,7 @@ class CycleGANSemanticModel(BaseModel):
         self.optimizer_CLS.zero_grad()
         self.backward_CLS()
         self.optimizer_CLS.step()
+
+    def gaussian(self, in_tensor, stddev):
+        noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, stddev).cuda() + in_tensor
+        return noisy_image
