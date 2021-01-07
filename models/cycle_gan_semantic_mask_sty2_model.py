@@ -70,9 +70,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
             parser.add_argument('--mixing', type=float, default=0.9)
             parser.add_argument('--path_batch_shrink', type=int, default=2)
             parser.add_argument('--path_regularize', type=float, default=2)
-            parser.add_argument('--no_init_weigth_D_sty2', action='store_true')
-            parser.add_argument('--no_init_weigth_dec_sty2', action='store_true')
-            parser.add_argument('--no_init_weigth_G', action='store_true')
+            parser.add_argument('--no_init_weight_D_sty2', action='store_true')
+            parser.add_argument('--no_init_weight_dec_sty2', action='store_true')
+            parser.add_argument('--no_init_weight_G', action='store_true')
             parser.add_argument('--load_weight_decoder', action='store_true')
             parser.add_argument('--percept_loss', action='store_true', help='whether to use perceptual loss for reconstruction and identity')
             parser.add_argument('--randomize_noise', action='store_true', help='whether to use random noise in sty2 decoder')
@@ -174,8 +174,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
 
         # Define stylegan2 decoder
         print('define decoder')
-        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)
-        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weigth_dec_sty2,clamp=self.opt.sty2_clamp)
+        self.netDecoderG_A = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weight_dec_sty2,clamp=self.opt.sty2_clamp)
+        self.netDecoderG_B = networks.define_decoder(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,size=self.opt.decoder_size,init_weight=not self.opt.no_init_weight_dec_sty2,clamp=self.opt.sty2_clamp)
         
         # Load pretrained weights stylegan2 decoder
         
@@ -223,10 +223,10 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.model_names += [nameDGA,nameDGB]
     
         print('define dis dec')
-        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size=self.opt.crop_size,lightness=opt.D_lightness)
+        self.netDiscriminatorDecoderG_A = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weight_D_sty2,img_size=self.opt.crop_size,lightness=opt.D_lightness)
         self.model_names += ['DiscriminatorDecoderG_A']
 
-        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size=self.opt.crop_size,lightness=opt.D_lightness)
+        self.netDiscriminatorDecoderG_B = networks.define_discriminatorstylegan2(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weight_D_sty2,img_size=self.opt.crop_size,lightness=opt.D_lightness)
         self.model_names += ['DiscriminatorDecoderG_B']
             
         self.netf_s = networks.define_f(opt.input_nc, nclasses=opt.semantic_nclasses, 
@@ -234,9 +234,9 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                                         gpu_ids=self.gpu_ids, fs_light=opt.fs_light)
 
         if self.opt.cam_loss:
-            self.netCamClassifier_w_B = networks.define_classifier_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size_dec=self.opt.decoder_size)
+            self.netCamClassifier_w_B = networks.define_classifier_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weight_D_sty2,img_size_dec=self.opt.decoder_size)
             self.model_names += ['CamClassifier_w_B']
-            self.netCamClassifier_w_A = networks.define_classifier_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weigth_D_sty2,img_size_dec=self.opt.decoder_size)
+            self.netCamClassifier_w_A = networks.define_classifier_w(init_type=opt.init_type, init_gain=opt.init_gain,gpu_ids=self.gpu_ids,init_weight=not self.opt.no_init_weight_D_sty2,img_size_dec=self.opt.decoder_size)
             self.model_names += ['CamClassifier_w_A']
         
         if self.isTrain:
