@@ -17,6 +17,8 @@ from torch import distributed as dist
 
 from .modules import loss
 
+from util.util import gaussian
+
 class CycleGANSty2Model(BaseModel):
 
     @staticmethod
@@ -263,7 +265,7 @@ class CycleGANSty2Model(BaseModel):
         if self.isTrain:
             #self.netDecoderG_B.eval()
             if self.rec_noise > 0.0:
-                self.fake_B_noisy1 = self.gaussian(self.fake_B, self.rec_noise)
+                self.fake_B_noisy1 = gaussian(self.fake_B, self.rec_noise)
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B)
@@ -273,7 +275,7 @@ class CycleGANSty2Model(BaseModel):
             self.fake_A,self.latent_fake_A = self.netDecoderG_B(self.z_fake_A,input_is_latent=True,truncation=self.truncation,truncation_latent=self.mean_latent_B,randomize_noise=False,return_latents=True,noise=self.n_fake_A)
             
             if self.rec_noise > 0.0:
-                self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
+                self.fake_A_noisy1 = gaussian(self.fake_A, self.rec_noise)
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A)
@@ -469,11 +471,6 @@ class CycleGANSty2Model(BaseModel):
         self.backward_discriminator_decoder()
         self.optimizer_D_Decoder.step()
         #self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], False)
-
-    def gaussian(self, in_tensor, stddev):
-        noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, stddev).cuda() + in_tensor
-        return noisy_image
-
 
     def d_logistic_loss(self,real_pred, fake_pred):
         real_loss = F.softplus(-real_pred)

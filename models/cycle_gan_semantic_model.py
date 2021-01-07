@@ -6,6 +6,7 @@ from . import networks
 from torch.autograd import Variable
 import numpy as np
 from .modules import loss
+from util.util import gaussian
 
 class CycleGANSemanticModel(BaseModel):
     #def name(self):
@@ -126,7 +127,7 @@ class CycleGANSemanticModel(BaseModel):
         self.fake_B = self.netG_A(self.real_A)
 
         if self.rec_noise > 0.0:
-            self.fake_B_noisy1 = self.gaussian(self.fake_B, self.rec_noise)
+            self.fake_B_noisy1 = gaussian(self.fake_B, self.rec_noise)
             self.rec_A= self.netG_B(self.fake_B_noisy1)
         else:
             self.rec_A = self.netG_B(self.fake_B)
@@ -134,7 +135,7 @@ class CycleGANSemanticModel(BaseModel):
         self.fake_A = self.netG_B(self.real_B)
 
         if self.rec_noise > 0.0:
-            self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
+            self.fake_A_noisy1 = gaussian(self.fake_A, self.rec_noise)
             self.rec_B = self.netG_A(self.fake_A_noisy1)
         else:
             self.rec_B = self.netG_A(self.fake_A)
@@ -253,6 +254,4 @@ class CycleGANSemanticModel(BaseModel):
         self.backward_CLS()
         self.optimizer_CLS.step()
 
-    def gaussian(self, in_tensor, stddev):
-        noisy_image = torch.normal(0, stddev, size=in_tensor.size()).to(in_tensor.device) + in_tensor
-        return noisy_image
+

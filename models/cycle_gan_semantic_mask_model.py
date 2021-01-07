@@ -8,6 +8,7 @@ from torch.autograd import Variable
 import numpy as np
 import torch.nn.functional as F
 from .modules import loss
+from util.util import gaussian
 
 class CycleGANSemanticMaskModel(BaseModel):
     def name(self):
@@ -210,14 +211,14 @@ class CycleGANSemanticMaskModel(BaseModel):
 
         if self.isTrain:
             if self.rec_noise > 0.0:
-                self.fake_B_noisy1 = self.gaussian(self.fake_B, self.rec_noise)
+                self.fake_B_noisy1 = gaussian(self.fake_B, self.rec_noise)
                 self.rec_A= self.netG_B(self.fake_B_noisy1)
             else:
                 self.rec_A = self.netG_B(self.fake_B)
             
             self.fake_A = self.netG_B(self.real_B)
             if self.rec_noise > 0.0:
-                self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
+                self.fake_A_noisy1 = gaussian(self.fake_A, self.rec_noise)
                 self.rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.rec_B = self.netG_A(self.fake_A)
@@ -252,8 +253,8 @@ class CycleGANSemanticMaskModel(BaseModel):
                     self.fake_B_mask = self.fake_B_mask_in + self.real_A_out_mask.float()
                     
                 if self.D_noise > 0.0:
-                    self.fake_B_noisy = self.gaussian(self.fake_B, self.D_noise)
-                    self.real_A_noisy = self.gaussian(self.real_A, self.D_noise)
+                    self.fake_B_noisy = gaussian(self.fake_B, self.D_noise)
+                    self.real_A_noisy = gaussian(self.real_A, self.D_noise)
                         
                 if hasattr(self, 'input_B_label'):
                 
@@ -271,8 +272,8 @@ class CycleGANSemanticMaskModel(BaseModel):
                         self.fake_A_mask = self.fake_A_mask_in + self.real_B_out_mask.float()
 
                     if self.D_noise > 0.0:
-                        self.fake_A_noisy = self.gaussian(self.fake_A, self.D_noise)
-                        self.real_B_noisy = self.gaussian(self.real_B, self.D_noise)
+                        self.fake_A_noisy = gaussian(self.fake_A, self.D_noise)
+                        self.real_B_noisy = gaussian(self.real_B, self.D_noise)
                         
         self.pred_fake_B = self.netf_s(self.fake_B)
         self.pfB = F.log_softmax(self.pred_fake_B,dim=d)#.argmax(dim=d)
@@ -435,7 +436,3 @@ class CycleGANSemanticMaskModel(BaseModel):
         self.optimizer_f_s.zero_grad()
         self.backward_f_s()
         self.optimizer_f_s.step()
- 
-    def gaussian(self, in_tensor, stddev):
-        noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, stddev).cuda() + in_tensor
-        return noisy_image

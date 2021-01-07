@@ -19,6 +19,8 @@ from torch import distributed as dist
 
 from .modules import loss
 
+from util.util import gaussian
+
 class CycleGANSemanticMaskSty2Model(BaseModel):
     #def name(self):
     #    return 'CycleGANModel'
@@ -334,7 +336,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         if self.isTrain:
             #self.netDecoderG_B.eval()
             if self.rec_noise > 0.0:
-                self.fake_B_noisy1 = self.gaussian(self.fake_B, self.rec_noise)
+                self.fake_B_noisy1 = gaussian(self.fake_B, self.rec_noise)
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B_noisy1)
             else:
                 self.z_rec_A, self.n_rec_A = self.netG_B(self.fake_B)
@@ -348,7 +350,7 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.fake_A = F.interpolate(self.fake_A,self.opt.crop_size)
             
             if self.rec_noise > 0.0:
-                self.fake_A_noisy1 = self.gaussian(self.fake_A, self.rec_noise)
+                self.fake_A_noisy1 = gaussian(self.fake_A, self.rec_noise)
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A_noisy1)
             else:
                 self.z_rec_B, self.n_rec_B = self.netG_A(self.fake_A)
@@ -380,8 +382,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                 self.fake_B_out_mask = self.fake_B *label_A_inv
                     
                 if self.D_noise:
-                    self.fake_B_noisy = self.gaussian(self.fake_B)
-                    self.real_A_noisy = self.gaussian(self.real_A)
+                    self.fake_B_noisy = gaussian(self.fake_B)
+                    self.real_A_noisy = gaussian(self.real_A)
                     #self.real_A_mask_in = self.aug_seq(self.real_A_mask_in)
                     #self.fake_B_mask_in = self.aug_seq(self.fake_B_mask_in)
                     #self.real_A_mask = self.aug_seq(self.real_A_mask)
@@ -399,8 +401,8 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
                     self.fake_A_out_mask = self.fake_A *label_B_inv
 
                     if self.D_noise:
-                        self.fake_A_noisy = self.gaussian(self.fake_A)
-                        self.real_B_noisy = self.gaussian(self.real_B)
+                        self.fake_A_noisy = gaussian(self.fake_A)
+                        self.real_B_noisy = gaussian(self.real_B)
                         #self.real_B_mask_in = self.aug_seq(self.real_B_mask_in)
                         #self.fake_A_mask_in = self.aug_seq(self.fake_A_mask_in)
                         #self.real_B_mask = self.aug_seq(self.real_B_mask)
@@ -714,11 +716,6 @@ class CycleGANSemanticMaskSty2Model(BaseModel):
         self.backward_discriminator_decoder()
         self.optimizer_D_Decoder.step()
         self.set_requires_grad([self.netDiscriminatorDecoderG_A,self.netDiscriminatorDecoderG_B], False)
-
-    def gaussian(self, in_tensor, stddev):
-        noisy_image = torch.zeros(list(in_tensor.size())).data.normal_(0, stddev).cuda() + in_tensor
-        return noisy_image
-
 
     def d_logistic_loss(self,real_pred, fake_pred):
         real_loss = F.softplus(-real_pred)
